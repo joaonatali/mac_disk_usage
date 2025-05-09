@@ -9,7 +9,7 @@ Uses Apple's launchd to schedule logging.
 - Clone the repo and create an environment with `uv`:
 
 ```
-git clone XXX
+git clone git@github.com:joaonatali/mac_disk_usage.git
 cd mac_disk_usage
 uv sync
 brew install gnuplot # For in-terminal usage plots
