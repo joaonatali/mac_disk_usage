@@ -2,17 +2,15 @@
 
 Setup an automated logger for disk usage in your Mac. Allows you to quantify the total amount of disk I/O in your system and prevent excessive usage, which may reduce your SSD life span. 
 
-Uses Apple's launchd to schedule logging. 
+Uses Apple's [launchd](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html) to schedule logging.
 
 ## Setup
 
 - Clone the repo and create an environment with `uv`:
-
 ```
 git clone git@github.com:joaonatali/mac_disk_usage.git
 cd mac_disk_usage
 uv sync
-brew install gnuplot # For in-terminal usage plots
 ```
 
 - Create a .env file with your desired location for data storage and configs
@@ -25,4 +23,16 @@ uv run dotenv set PATH_TO_LOGS /Users/you/repos/mac_disk_usage/logs
 - Setup scheduled job
 ```
 uv run python load_schedule.py
+```
+
+## Optional
+
+- Install `gnuplot` for in-terminal plotting of logged results
+```
+brew install gnuplot
+```
+
+- Add [MotherDuck](https://motherduck.com/) token to store results in the cloud. 
+```
+uv run dotenv set MOTHERDUCK_TOKEN your_token
 ```
