@@ -28,7 +28,6 @@ def run_shell_command(command: str) -> tuple[str, str]:
         if process.returncode != 0:
             print(f"Error executing command: {command}", file=sys.stderr)
             print(f"Stderr: {stderr}", file=sys.stderr)
-            return None, stderr
         return stdout, stderr
     except Exception as e:
         print(
@@ -36,13 +35,13 @@ def run_shell_command(command: str) -> tuple[str, str]:
             file=sys.stderr,
         )
         print(f"Exception: {e}", file=sys.stderr)
-        return None, str(e)
+        return "", str(e)
 
 
 class Schedule:
     def __init__(self) -> None:
-        self.config = dotenv_values(".env")
-        self.user = getuser()
+        self.config: dict[str, str] = dotenv_values(".env")  # type: ignore
+        self.user: str = getuser()
 
     def create_job_files(self) -> None:
         path_to_scripts = self.config["PATH_TO_SCRIPTS"]
@@ -66,7 +65,7 @@ class Schedule:
             user=self.user,
             shell=shell,
             log_disk_usage=Path(path_to_scripts, "log_disk_usage.sh"),
-            log_file=Path(path_to_logs, f"diskusage.log"),
+            log_file=Path(path_to_logs, "diskusage.log"),
             error_file=Path(path_to_logs, "diskusage.error.log"),
         )
         with open(
@@ -79,7 +78,7 @@ class Schedule:
 
     def load_into_launchd(self) -> None:
         # Check if job is already loaded
-        out, err = run_shell_command(f"launchctl list")
+        out, err = run_shell_command("launchctl list")
         if err:
             raise RuntimeError("Failed to run command 'launchctl list'")
         if f"com.{self.user}.diskusagelog" in out:
