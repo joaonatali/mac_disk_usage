@@ -42,6 +42,7 @@ class Schedule:
     def __init__(self) -> None:
         self.config: dict[str, str] = dotenv_values(".env")  # type: ignore
         self.user: str = getuser()
+        self.job_name = f"com.{self.user}.diskusagelog"
 
     def create_job_files(self) -> None:
         path_to_scripts = self.config["PATH_TO_SCRIPTS"]
@@ -69,9 +70,7 @@ class Schedule:
             error_file=Path(path_to_logs, "diskusage.error.log"),
         )
         with open(
-            Path(
-                "~/Library/LaunchAgents", f"com.{self.user}.diskusagelog.plist"
-            ).expanduser(),
+            Path("~/Library/LaunchAgents", f"{self.job_name}.plist").expanduser(),
             "w",
         ) as file:
             file.write(job)
@@ -84,16 +83,18 @@ class Schedule:
         if f"com.{self.user}.diskusagelog" in out:
             print("Job is already loaded. Unloading it before loading.")
             out, err = run_shell_command(
-                f"launchctl unload ~/Library/LaunchAgents/com.{self.user}.diskusagelog.plist"
+                f"launchctl unload ~/Library/LaunchAgents/{self.job_name}.plist"
             )
             if err:
                 raise RuntimeError("Failed to run command 'launchctl unload'")
         # Load scheduled job into Launchd
         out, err = run_shell_command(
-            f"launchctl load ~/Library/LaunchAgents/com.{self.user}.diskusagelog.plist"
+            f"launchctl load ~/Library/LaunchAgents/{self.job_name}.plist"
         )
         if err:
             raise RuntimeError("Failed to run command 'launchctl load'")
+        else:
+            print(f"Job {self.job_name} successfully loaded into Launchd.")
 
 
 if __name__ == "__main__":
