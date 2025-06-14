@@ -45,7 +45,7 @@ def parse_log_file(file_path: str) -> list[list[str]]:
 def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
     columns = [
         "timestamp",
-        "KB/t",
+        "KB_by_t",
         "xfrs",
         "disk_usage_since_boot_MB",
         "cpu_us",
@@ -65,26 +65,79 @@ def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
     return df
 
 
-def save_to_duckdb(
+def save_to_ducklake(
     df: pd.DataFrame,
-    db_path: str,
+    catalog_path: str,
+    alias: str = "diskusage_lake",
+    table_name: str = "disk_usage",
 ) -> None:
-    local_db_dir = os.path.dirname(db_path)
-    if local_db_dir:  # Ensure it's not an empty string if db_path is just a filename
-        os.makedirs(local_db_dir, exist_ok=True)
+    """
+    Persist `df` to a DuckLake catalog so that every write produces
+    a new snapshot and older versions remain query-able.
 
-    con_local = None
-    try:
-        con_local = duckdb.connect(database=db_path)
-        con_local.register("df", df)
-        con_local.execute("DROP TABLE IF EXISTS disk_usage")
-        con_local.execute("CREATE TABLE disk_usage AS SELECT * FROM df")
-        print(f"Data saved to local DuckDB: {db_path}")
-    except Exception as e:
-        print(f"Failed to save data to local DuckDB: {e}")
-    finally:
-        if con_local:
-            con_local.close()
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The data to write.
+    catalog_path : str
+        Path to the DuckLake *metadata* file
+        (e.g. '/tmp/disk_usage/metadata.ducklake').
+        If you pass a directory instead, a file called
+        'disk_usage.ducklake' is created inside it.
+    alias : str, optional
+        Name used when the catalog is ATTACHed in DuckDB.
+    table_name : str, optional
+        Target table inside the catalog.
+    """
+    import os
+    import duckdb
+
+    # Resolve paths and create directories -------------------------------------------------
+    catalog_path = os.path.abspath(catalog_path)
+    if not catalog_path.endswith(".ducklake"):
+        catalog_path = os.path.join(catalog_path, "disk_usage.ducklake")
+    catalog_dir = os.path.dirname(catalog_path)
+
+    os.makedirs(catalog_dir, exist_ok=True)
+
+    # Connect & load the DuckLake extension ------------------------------------------------
+    con = duckdb.connect()
+    con.execute(
+        """
+        INSTALL ducklake;
+        LOAD ducklake;
+        """
+    )
+    # Attach (or re-attach) the catalog ----------------------------------------------------
+    con.execute(f"ATTACH IF NOT EXISTS 'ducklake:{catalog_path}' AS {alias};")
+    con.execute(f"USE {alias};")
+
+    # Create a new table if it doesn't exist
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS disk_usage (
+            timestamp TIMESTAMP,
+            KB_by_t DOUBLE,
+            xfrs DOUBLE,
+            disk_usage_since_boot_MB DOUBLE,
+            cpu_us DOUBLE,
+            cpu_sy DOUBLE,
+            cpu_id DOUBLE,
+            load_1m DOUBLE,
+            load_5m DOUBLE,
+            load_15m DOUBLE,
+            delta_disk_usage_GB DOUBLE
+        );
+    """)
+    # Register the DataFrame and commit a new snapshot -------------------------------------
+    con.register("df_view", df)
+
+    con.execute(f"""
+                BEGIN TRANSACTION;
+                DELETE FROM {table_name};
+                INSERT INTO {table_name} SELECT * FROM df_view;
+                COMMIT;
+                """)
+    con.close()
 
 
 def save_to_motherduck(
@@ -227,7 +280,7 @@ def main() -> None:
         "-s",
         "--save_db",
         action="store_true",
-        help="Save data to DuckDB database.",
+        help="Save data to DuckLake database.",
     )
     parser.add_argument(
         "-p",
@@ -244,8 +297,8 @@ def main() -> None:
     parser.add_argument(
         "--db_path",
         type=str,
-        default="./data/disk_usage.db",
-        help="Path to the DuckDB database.",
+        default="./data/disk_usage.ducklake",
+        help="Path to the DuckLake directory.",
     )
 
     args = parser.parse_args()
@@ -256,7 +309,7 @@ def main() -> None:
     df = create_dataframe(parsed_data)
 
     if args.save_db:
-        save_to_duckdb(df, db_path=args.db_path)
+        save_to_ducklake(df, catalog_path=args.db_path)
 
     if args.print_df:
         print(df)
