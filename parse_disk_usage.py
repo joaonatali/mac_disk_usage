@@ -13,7 +13,6 @@ import duckdb
 import subprocess
 import os
 import argparse
-import datetime
 from dotenv import dotenv_values
 from typing import Dict
 
@@ -142,9 +141,19 @@ def save_to_ducklake(
 
 def save_to_motherduck(
     df: pd.DataFrame,
-    db_path: str,
-    config: Dict[str, str],
+    catalog_path: str,
 ) -> None:
+    """
+    Save data to a MotherDuck database.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The data to save.
+    catalog_path : str
+        Path to the DuckLake catalog db.
+    """
+    config = dotenv_values(".env")
     motherduck_token = config.get("MOTHERDUCK_TOKEN")
 
     if motherduck_token:
@@ -155,7 +164,7 @@ def save_to_motherduck(
             if motherduck_db_name_from_env is None
             else motherduck_db_name_from_env
         )
-        md_table_name = "disk_usage_history"
+        md_table_name = "disk_usage"
 
         print(
             f"Attempting to save data to MotherDuck database: '{motherduck_db_name}', table: '{md_table_name}'"
@@ -163,51 +172,18 @@ def save_to_motherduck(
 
         con_md = None
         try:
-            df_md = df.copy()
-            # Ensure timestamp is datetime for strftime
-            if not pd.api.types.is_datetime64_any_dtype(df_md["timestamp"]):
-                df_md["timestamp"] = pd.to_datetime(df_md["timestamp"])
-            df_md["ds"] = datetime.datetime.now().strftime("%Y-%m-%d")
-
-            # Connect to MotherDuck
             con_md = duckdb.connect(database="md:")
             con_md.execute(f"CREATE DATABASE IF NOT EXISTS {motherduck_db_name};")
-            con_md.execute(f"USE DATABASE {motherduck_db_name};")
+            con_md.execute(f"USE {motherduck_db_name};")
+            con_md.execute(f"ATTACH 'ducklake:{catalog_path}' AS disk_usage_lake;")
 
-            # Register DataFrame as a temporary view for easy querying
-            con_md.register("df_view_for_md", df_md)
-
-            # Dynamically create schema DDL string
-            cols_for_schema_ddl = []
-            for col_name in df_md.columns:
-                col_sql_name = f'"{col_name}"'  # Quote all column names
-
-                if col_name == "timestamp":
-                    col_type = "TIMESTAMP"
-                elif col_name == "ds":  # This is our partition key
-                    col_type = "VARCHAR"
-                # Numeric columns from pandas (after to_numeric) are likely float64 or int64
-                elif pd.api.types.is_integer_dtype(df_md[col_name].dtype):
-                    col_type = "BIGINT"
-                elif pd.api.types.is_float_dtype(df_md[col_name].dtype):
-                    col_type = "DOUBLE"
-                elif pd.api.types.is_datetime64_any_dtype(
-                    df_md[col_name].dtype
-                ):  # Should be caught by 'timestamp'
-                    col_type = "TIMESTAMP"
-                else:  # Default to VARCHAR for any other types (e.g., object)
-                    col_type = "VARCHAR"
-                cols_for_schema_ddl.append(f"{col_sql_name} {col_type}")
-
-            schema_ddl_string = ", ".join(cols_for_schema_ddl)
-
-            # Create the new table, partitioned by 'ds'. 'ds' must be one of the columns in schema_ddl_string.
-            create_table_sql = f"""
-            CREATE TABLE {md_table_name} IF NOT EXISTS ({schema_ddl_string});"""
-            con_md.execute(create_table_sql)
-
-            # Insert data into the partitioned table
-            con_md.execute(f"INSERT INTO {md_table_name} SELECT * FROM df_view_for_md;")
+            con_md.execute(f"""
+                           BEGIN TRANSACTION;
+                           DROP TABLE IF EXISTS {md_table_name};
+                           CREATE TABLE {md_table_name} AS
+                           SELECT * FROM disk_usage_lake.disk_usage;
+                           COMMIT;
+                           """)
 
             print(
                 f"Data successfully saved to MotherDuck: {motherduck_db_name}.{md_table_name}."
@@ -295,6 +271,12 @@ def main() -> None:
         help="Print the DataFrame.",
     )
     parser.add_argument(
+        "-m",
+        "--save_md",
+        action="store_true",
+        help="Save data to MotherDuck database.",
+    )
+    parser.add_argument(
         "--db_path",
         type=str,
         default="./data/disk_usage.ducklake",
@@ -310,6 +292,9 @@ def main() -> None:
 
     if args.save_db:
         save_to_ducklake(df, catalog_path=args.db_path)
+
+    if args.save_md:
+        save_to_motherduck(df, catalog_path=args.db_path)
 
     if args.print_df:
         print(df)
