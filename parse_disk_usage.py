@@ -14,10 +14,20 @@ import subprocess
 import os
 import argparse
 from dotenv import dotenv_values
-from typing import Dict
 
 
 def parse_log_file(file_path: str) -> list[list[str]]:
+    """
+    Parses the disk usage log file.
+
+    Parameters
+    ----------
+        file_path: Path to the log file.
+
+    Returns:
+        A list of lists, where each inner list represents a row of parsed data.
+    """
+
     date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}")
     with open(file_path, "r") as file:
         lines = file.readlines()
@@ -42,6 +52,17 @@ def parse_log_file(file_path: str) -> list[list[str]]:
 
 
 def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
+    """
+    Create a DataFrame from parsed data.
+
+    Parameters
+    ----------
+        parsed_data: A list of lists containing the parsed log data.
+
+    Returns:
+        A pandas DataFrame with appropriate column names and data types.
+    """
+
     columns = [
         "timestamp",
         "KB_by_t",
@@ -153,7 +174,7 @@ def save_to_motherduck(
     catalog_path : str
         Path to the DuckLake catalog db.
     """
-    config = dotenv_values(".env")
+    config: dict[str, str] = load_config()
     motherduck_token = config.get("MOTHERDUCK_TOKEN")
 
     if motherduck_token:
@@ -205,6 +226,14 @@ def save_to_motherduck(
 
 
 def plot_data(df: pd.DataFrame) -> None:
+    """
+    Plot data in the terminal.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The data to plot.
+    """
     df_plot = df[["timestamp", "delta_disk_usage_GB"]].dropna()
     df_plot = df_plot[df_plot["delta_disk_usage_GB"] > 0]  # Filter out negative values
 
@@ -236,7 +265,7 @@ def plot_data(df: pd.DataFrame) -> None:
         os.remove(script_file)
 
 
-def load_config() -> Dict[str, str]:
+def load_config() -> dict[str, str]:
     """Loads .env file and returns a dictionary of non-None values."""
     env_vars = dotenv_values(".env")
     return {k: v for k, v in env_vars.items() if v is not None}
