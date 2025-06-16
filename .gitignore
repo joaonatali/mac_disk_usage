@@ -14,3 +14,7 @@ wheels/
 
 # IDEs
 .vscode
+__marimo__
+
+# Others
+.ruff_cache
