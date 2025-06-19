@@ -25,7 +25,7 @@ uv run dotenv set PATH_TO_LOGS /Users/you/repos/mac_disk_usage/logs
 uv run python load_schedule.py
 ```
 
-## Optional
+### Optional
 
 - Install `gnuplot` for in-terminal plotting of logged results
 ```
@@ -36,3 +36,24 @@ brew install gnuplot
 ```
 uv run dotenv set MOTHERDUCK_TOKEN your_token
 ```
+
+## Usage
+
+### Setting up scheduled jobs
+
+(Needs environment variables setup in `.env`)
+
+- Load job in `launchd`:  
+    `uv run python load_schedule.py`
+- Check job is loaded:  
+    `launchctl list | grep -i "diskusagelog"`
+
+
+### Parse data and load into DBs
+
+- Parse and plot:  
+    `uv run parse_disk_usage.py -pd`
+- Parse, plot, and save to DuckLake and MotherDuck:  
+    `uv run parse_disk_usage.py -pdsm`
+- Get help:  
+    `uv run parse_disk_usage.py -h`

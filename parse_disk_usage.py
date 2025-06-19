@@ -319,17 +319,17 @@ def main() -> None:
     parsed_data = parse_log_file(args.file)
     df = create_dataframe(parsed_data)
 
-    if args.save_db:
-        save_to_ducklake(df, catalog_path=args.db_path)
-
-    if args.save_md:
-        save_to_motherduck(df, catalog_path=args.db_path)
-
     if args.print_df:
         print(df)
 
     if args.plot:
         plot_data(df)
+
+    if args.save_db:
+        save_to_ducklake(df, catalog_path=args.db_path)
+
+    if args.save_md:
+        save_to_motherduck(df, catalog_path=args.db_path)
 
 
 if __name__ == "__main__":
