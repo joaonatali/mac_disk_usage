@@ -3,21 +3,28 @@
 #   "duckdb>=1.2.0",
 #   "pandas", # For DataFrame manipulation
 #   "pytest", # For testing (if tests are present)
-#   "python-dotenv" # For loading .env files
+#   "python-dotenv", # For loading .env files
+#   "typer" # For CLI generation
 # ]
 # ///
 
 import re
+from pathlib import Path
 import pandas as pd
 import duckdb
 import subprocess
 import os
-import argparse
+import typer
 import sys
 from dotenv import dotenv_values
 
+app = typer.Typer(
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 
-def parse_log_file(file_path: str) -> list[list[str]]:
+
+def parse_log_file(file_path: str | Path) -> list[list[str]]:
     """
     Parses the disk usage log file.
 
@@ -88,7 +95,7 @@ def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
 
 def save_to_ducklake(
     df: pd.DataFrame,
-    catalog_path: str,
+    catalog_path: str | Path,
     alias: str = "diskusage_lake",
     table_name: str = "disk_usage",
 ) -> None:
@@ -163,7 +170,7 @@ def save_to_ducklake(
 
 def save_to_motherduck(
     df: pd.DataFrame,
-    catalog_path: str,
+    catalog_path: str | Path,
 ) -> None:
     """
     Save data to a MotherDuck database.
@@ -236,7 +243,7 @@ def plot_data(df: pd.DataFrame) -> None:
         The data to plot.
     """
     df_plot = df[["timestamp", "delta_disk_usage_GB"]].dropna()
-    df_plot = df_plot[df_plot["delta_disk_usage_GB"] > 0]  # Filter out negative values
+    df_plot = df_plot[df_plot["delta_disk_usage_GB"] > 0]
 
     data_file = "disk_usage_data.txt"
     df_plot.to_csv(
@@ -276,66 +283,62 @@ def load_config() -> dict[str, str]:
     return {k: v for k, v in env_vars.items() if v is not None}
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Parse disk usage log and optionally save to DuckDB and plot data."
-    )
-    parser.add_argument(
+@app.command()
+def main(
+    file: Path = typer.Option(
+        "./data/logged_disk_usage.txt",
         "--file",
-        type=str,
-        default="./data/logged_disk_usage.txt",
+        "-f",
         help="Path to the log file.",
-    )
-    parser.add_argument(
+    ),
+    save_db: bool = typer.Option(
+        False,
+        "--save-db",
         "-s",
-        "--save_db",
-        action="store_true",
         help="Save data to DuckLake database.",
-    )
-    parser.add_argument(
-        "-p",
+    ),
+    plot: bool = typer.Option(
+        False,
         "--plot",
-        action="store_true",
+        "-p",
         help="Plot data in the terminal.",
-    )
-    parser.add_argument(
+    ),
+    print_df: bool = typer.Option(
+        False,
+        "--print-df",
         "-d",
-        "--print_df",
-        action="store_true",
         help="Print the DataFrame.",
-    )
-    parser.add_argument(
+    ),
+    save_md: bool = typer.Option(
+        False,
+        "--save-md",
         "-m",
-        "--save_md",
-        action="store_true",
         help="Save data to MotherDuck database.",
-    )
-    parser.add_argument(
-        "--db_path",
-        type=str,
-        default="./data/disk_usage.ducklake",
+    ),
+    db_path: Path = typer.Option(
+        "./data/disk_usage.ducklake",
+        "--db-path",
         help="Path to the DuckLake directory.",
-    )
+    ),
+) -> None:
+    """Parse disk usage log and optionally save to DuckLake/MotherDuck and plot data."""
 
-    args = parser.parse_args()
-
-    # config = load_config()  # Load .env config
-
-    parsed_data = parse_log_file(args.file)
+    print("Parsing log file...")
+    parsed_data = parse_log_file(file)
     df = create_dataframe(parsed_data)
 
-    if args.print_df:
+    if print_df:
         print(df)
 
-    if args.plot:
+    if plot:
         plot_data(df)
 
-    if args.save_db:
-        save_to_ducklake(df, catalog_path=args.db_path)
+    if save_db:
+        save_to_ducklake(df, catalog_path=db_path)
 
-    if args.save_md:
-        save_to_motherduck(df, catalog_path=args.db_path)
+    if save_md:
+        save_to_motherduck(df, catalog_path=db_path)
 
 
 if __name__ == "__main__":
-    main()
+    app()
