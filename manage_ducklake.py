@@ -54,6 +54,9 @@ class ducklake:
     def close_con(self) -> None:
         self.con.close()
 
+    def __del__(self) -> None:
+        self.close_con()
+
 
 def connect_and_setup_ducklake(catalog_path: str) -> duckdb.DuckDBPyConnection:
     """
@@ -134,8 +137,13 @@ def prune_history(catalog_path: str, weeks_to_keep: int = 10) -> None:
         print("History not prunned.")
 
 
-# @app.command()
-# def merge_files()
+@app.command()
+def merge_files(catalog_path: str):
+    """Marge small Parquet files to improve performance"""
+
+    dl = ducklake(catalog_path)
+    dl.merge_files()
+
 
 if __name__ == "__main__":
     app()
