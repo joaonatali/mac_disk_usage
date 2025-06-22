@@ -13,6 +13,7 @@ import duckdb
 import subprocess
 import os
 import argparse
+import sys
 from dotenv import dotenv_values
 
 
@@ -263,6 +264,10 @@ def plot_data(df: pd.DataFrame) -> None:
     if ret.returncode == 0:
         os.remove(data_file)
         os.remove(script_file)
+    else:
+        print(f"Gnuplot exited with error code {ret.returncode}", file=sys.stderr)
+        print(f"Stdout: {ret.stdout}", file=sys.stderr)
+        print(f"Stderr: {ret.stderr}", file=sys.stderr)
 
 
 def load_config() -> dict[str, str]:
