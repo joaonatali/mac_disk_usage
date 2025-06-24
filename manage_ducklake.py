@@ -5,7 +5,10 @@ import typer
 DUCKLAKE_ALIAS = "diskusage_lake"
 DEFAULT_TABLE_NAME = "disk_usage"
 
-app = typer.Typer(no_args_is_help=True)
+app = typer.Typer(
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 
 
 class ducklake:
@@ -143,6 +146,13 @@ def merge_files(catalog_path: str):
 
     dl = ducklake(catalog_path)
     dl.merge_files()
+
+
+@app.command()
+def update_extensions() -> None:
+    con = duckdb.connect()
+    con.sql("UPDATE EXTENSIONS;").show()
+    con.close()
 
 
 if __name__ == "__main__":
