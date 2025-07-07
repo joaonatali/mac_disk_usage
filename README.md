@@ -57,3 +57,9 @@ uv run dotenv set MOTHERDUCK_TOKEN your_token
     `uv run parse_disk_usage.py -pdsm`
 - Get help:  
     `uv run parse_disk_usage.py -h`
+
+### Using `just`
+
+Install `just` with `brew install just`
+
+- `just -l`
