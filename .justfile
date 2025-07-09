@@ -19,7 +19,7 @@ parse:
 save:
     uv run parse_disk_usage.py -pdsm --table {{TABLE_NAME}} --db-path {{DL_CATALOG}}}}
 
-# Update DuckDB extensions
+# Update dependencies and DuckDB extensions
 update:
     uv sync -U
     uv run manage_ducklake.py update-extensions
