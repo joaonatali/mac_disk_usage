@@ -15,9 +15,11 @@ uv sync
 
 - Create a .env file with your desired location for data storage and configs
 ```
-uv run dotenv set PATH_TO_SCRIPTS /Users/you/repos/mac_disk_usage
-uv run dotenv set PATH_TO_DATA /Users/you/repos/mac_disk_usage/data
-uv run dotenv set PATH_TO_LOGS /Users/you/repos/mac_disk_usage/logs
+uv run dotenv set PATH_TO_SCRIPTS /Users/{you}/repos/mac_disk_usage
+uv run dotenv set PATH_TO_DATA /Users/{you}/repos/mac_disk_usage/data
+uv run dotenv set PATH_TO_LOGS /Users/{you}/repos/mac_disk_usage/logs
+uv run dotenv set DL_CATALOG /Users/{you}/repos/mac_disk_usage/data/disk_usage.ducklake
+uv run dotenv set TABLE_NAME disk_usage
 ```
 
 - Setup scheduled job

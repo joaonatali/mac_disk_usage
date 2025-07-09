@@ -171,6 +171,7 @@ def save_to_ducklake(
 def save_to_motherduck(
     df: pd.DataFrame,
     catalog_path: str | Path,
+    table_name: str = "disk_usage",
 ) -> None:
     """
     Save data to a MotherDuck database.
@@ -193,10 +194,9 @@ def save_to_motherduck(
             if motherduck_db_name_from_env is None
             else motherduck_db_name_from_env
         )
-        md_table_name = "disk_usage"
 
         print(
-            f"Attempting to save data to MotherDuck database: '{motherduck_db_name}', table: '{md_table_name}'"
+            f"Attempting to save data to MotherDuck database: '{motherduck_db_name}', table: '{table_name}'"
         )
 
         con_md = None
@@ -208,14 +208,14 @@ def save_to_motherduck(
 
             con_md.execute(f"""
                            BEGIN TRANSACTION;
-                           DROP TABLE IF EXISTS {md_table_name};
-                           CREATE TABLE {md_table_name} AS
-                           SELECT * FROM disk_usage_lake.disk_usage;
+                           DROP TABLE IF EXISTS {table_name};
+                           CREATE TABLE {table_name} AS
+                           SELECT * FROM disk_usage_lake.{table_name};
                            COMMIT;
                            """)
 
             print(
-                f"Data successfully saved to MotherDuck: {motherduck_db_name}.{md_table_name}."
+                f"Data successfully saved to MotherDuck: {motherduck_db_name}.{table_name}."
             )
 
         except Exception as e:
@@ -320,6 +320,11 @@ def main(
         "--db-path",
         help="Path to the DuckLake directory.",
     ),
+    table_name: str = typer.Option(
+        "disk_usage",
+        "--table",
+        help="Table name to save data to.",
+    ),
 ) -> None:
     """Parse disk usage log and optionally save to DuckLake/MotherDuck and plot data."""
 
@@ -334,10 +339,10 @@ def main(
         plot_data(df)
 
     if save_db:
-        save_to_ducklake(df, catalog_path=db_path)
+        save_to_ducklake(df, catalog_path=db_path, table_name=table_name)
 
     if save_md:
-        save_to_motherduck(df, catalog_path=db_path)
+        save_to_motherduck(df, catalog_path=db_path, table_name=table_name)
 
 
 if __name__ == "__main__":
