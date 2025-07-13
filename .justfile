@@ -13,11 +13,11 @@ load:
 
 # Parse disk usage
 parse:
-    uv run parse_disk_usage.py -pd --table {{TABLE_NAME}} --db-path {{DL_CATALOG}}}}
+    uv run parse_disk_usage.py -pd --table {{TABLE_NAME}} --db-path {{DL_CATALOG}}
 
 # Parse disk usage and save data to DuckLake and MotherDuck
 save:
-    uv run parse_disk_usage.py -pdsm --table {{TABLE_NAME}} --db-path {{DL_CATALOG}}}}
+    uv run parse_disk_usage.py -pdsm --table {{TABLE_NAME}} --db-path {{DL_CATALOG}}
 
 # Update dependencies and DuckDB extensions
 update:
