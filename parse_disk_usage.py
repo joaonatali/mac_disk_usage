@@ -253,13 +253,13 @@ def plot_data(df: pd.DataFrame) -> None:
     gnuplot_script = """
     set datafile separator ","
     set terminal dumb size 120, 30
-    set title "Delta Disk Usage Over Time"
+    set title "Daily Disk Usage Over Time (GB)"
     set xlabel "Time"
     set ylabel "Delta Disk Usage (GB)"
     set xdata time
     set timefmt "%Y-%m-%dT%H:%M:%S"
     set format x "%Y-%m-%d"
-    plot "{}" using 1:2 with points
+    plot "{}" using 1:2 with points notitle
     """.format(data_file)
 
     script_file = "plot_disk_usage.gp"
