@@ -11,7 +11,7 @@ app = typer.Typer(
 )
 
 
-class ducklake:
+class Ducklake:
     def __init__(self, catalog_path: str) -> None:
         self.catalog_path = catalog_path
         self.con = connect_and_setup_ducklake(self.catalog_path)
@@ -101,7 +101,7 @@ def connect_and_setup_ducklake(catalog_path: str) -> duckdb.DuckDBPyConnection:
 @app.command()
 def snapshots(catalog_path: str, table_name: str = DEFAULT_TABLE_NAME) -> None:
     """Lists all available versions (snapshots) of a table in the DuckLake catalog."""
-    dl = ducklake(catalog_path)
+    dl = Ducklake(catalog_path)
     dl.snapshots().show()
 
 
@@ -112,7 +112,7 @@ def show_data(
     snapshot_id: int | None = None,
 ) -> None:
     """Shows data from a table, optionally from a specific version."""
-    dl = ducklake(catalog_path)
+    dl = Ducklake(catalog_path)
     rel = dl.get_data(table_name, snapshot_id)
     rel.show()
 
@@ -121,7 +121,7 @@ def show_data(
 def prune_history(catalog_path: str, weeks_to_keep: int = 10) -> None:
     """Deletes old snapshots to save space."""
 
-    dl = ducklake(catalog_path)
+    dl = Ducklake(catalog_path)
 
     print("Prunning old snapshots...")
     snapshots = dl.snapshots()
@@ -144,7 +144,7 @@ def prune_history(catalog_path: str, weeks_to_keep: int = 10) -> None:
 def merge_files(catalog_path: str):
     """Marge small Parquet files to improve performance"""
 
-    dl = ducklake(catalog_path)
+    dl = Ducklake(catalog_path)
     dl.merge_files()
 
 
