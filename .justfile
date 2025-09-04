@@ -35,3 +35,7 @@ show:
 # Merge files in DuckLake
 merge:
     uv run manage_ducklake.py merge-files {{DL_CATALOG}}
+
+# Prune history from ducklake
+prune weeks='10':
+    uv run manage_ducklake.py prune-history {{DL_CATALOG}} --weeks-to-keep {{weeks}}
