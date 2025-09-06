@@ -48,6 +48,9 @@ class Ducklake:
         self.con.execute(
             f"CALL ducklake_expire_snapshots('{DUCKLAKE_ALIAS}', older_than => now() - INTERVAL '{weeks_to_keep} week');"
         )
+        self.con.execute(
+            f"CALL ducklake_cleanup_old_files('{DUCKLAKE_ALIAS}', cleanup_all => true);"
+        )
 
     def merge_files(self) -> None:
         """Marge small Parquet files to improve performance"""
