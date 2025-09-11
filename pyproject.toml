@@ -1,7 +1,7 @@
 [project]
 name = "mac-disk-usage"
 version = "0.1.0"
-description = "Add your description here"
+description = "Setup an automated logger for disk usage in your Mac"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

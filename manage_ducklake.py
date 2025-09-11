@@ -113,11 +113,18 @@ def show_data(
     catalog_path: str,
     table_name: str = DEFAULT_TABLE_NAME,
     snapshot_id: int | None = None,
+    max_rows: int = typer.Option(
+        20,
+        "--max-rows",
+        "-n",
+        help="Maximum number of rows to display. Use -1 for no limit.",
+    ),
 ) -> None:
     """Shows data from a table, optionally from a specific version."""
     dl = Ducklake(catalog_path)
     rel = dl.get_data(table_name, snapshot_id)
-    rel.show()
+    limit = max_rows if max_rows > -1 else None
+    rel.show(max_rows=limit)
 
 
 @app.command()

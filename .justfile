@@ -29,8 +29,8 @@ snapshots:
     uv run manage_ducklake.py snapshots {{DL_CATALOG}}
 
 # Show data in DuckLake
-show:
-    uv run manage_ducklake.py show-data {{DL_CATALOG}}
+show rows='20':
+    uv run manage_ducklake.py show-data {{DL_CATALOG}} --max-rows {{rows}}
 
 # Merge files in DuckLake
 merge:
