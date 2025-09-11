@@ -8,6 +8,7 @@ with app.setup:
     import marimo as mo
     import polars as pl
     import altair as alt
+    from manage_ducklake import snapshots
 
     lake_path = "./data/disk_usage.ducklake"
 
@@ -31,6 +32,12 @@ def _():
         """
     )
     return (snapshots_df,)
+
+
+@app.cell
+def _():
+    snapshots(lake_path)
+    return
 
 
 @app.cell
