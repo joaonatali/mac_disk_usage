@@ -88,7 +88,16 @@ def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
     numeric_columns = columns[1:]
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce")
-    df["delta_disk_usage_GB"] = df.disk_usage_since_boot_MB.diff() / 1024
+
+    # Calculate the difference in disk usage and time
+    disk_usage_diff_GB = df["disk_usage_since_boot_MB"].diff() / 1024
+    time_diff_days = df["timestamp"].diff().dt.total_seconds() / (24 * 3600)
+
+    # Avoid division by zero if time difference is zero
+    time_diff_days_no_zeros = time_diff_days.replace(0, pd.NA)
+
+    # Calculate daily average usage, accounting for missing days
+    df["delta_disk_usage_GB"] = disk_usage_diff_GB / time_diff_days_no_zeros
 
     return df
 
