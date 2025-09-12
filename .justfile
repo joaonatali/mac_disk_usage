@@ -11,6 +11,10 @@ TABLE_NAME := env("TABLE_NAME", "disk_usage")
 load:
     uv run load_schedule.py
 
+# Show entry loaded in launchd
+check_loaded:
+    launchctl list | grep -i "diskusagelog"
+
 # Parse disk usage
 parse:
     uv run parse_disk_usage.py -pd --table {{TABLE_NAME}} --db-path {{DL_CATALOG}}
