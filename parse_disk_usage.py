@@ -152,7 +152,7 @@ def save_to_ducklake(
     # Create a new table if it doesn't exist
     con.execute("""
         CREATE TABLE IF NOT EXISTS disk_usage (
-            timestamp TIMESTAMP,
+            timestamp TIMESTAMP WITH TIME ZONE,
             KB_by_t DOUBLE,
             xfrs DOUBLE,
             disk_usage_since_boot_MB DOUBLE,
