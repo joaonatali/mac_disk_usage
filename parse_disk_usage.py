@@ -1,13 +1,3 @@
-# /// script
-# dependencies = [
-#   "duckdb>=1.2.0",
-#   "pandas", # For DataFrame manipulation
-#   "pytest", # For testing (if tests are present)
-#   "python-dotenv", # For loading .env files
-#   "typer" # For CLI generation
-# ]
-# ///
-
 import re
 from pathlib import Path
 import pandas as pd
@@ -90,7 +80,7 @@ def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
     df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce")
 
     # Calculate the difference in disk usage and time
-    disk_usage_diff_GB = df["disk_usage_since_boot_MB"].diff() / 1024
+    disk_usage_diff_GB = df["disk_usage_since_boot_MB"].diff() / 1024  # type: ignore
     time_diff_days = df["timestamp"].diff().dt.total_seconds() / (24 * 3600)
 
     # Avoid division by zero if time difference is zero
