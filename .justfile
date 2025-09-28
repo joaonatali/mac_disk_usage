@@ -43,3 +43,7 @@ merge:
 # Prune history from ducklake
 prune weeks='10':
     uv run manage_ducklake.py prune-history {{DL_CATALOG}} --weeks-to-keep {{weeks}}
+
+# Run unit tests
+test:
+    uv run pytest
