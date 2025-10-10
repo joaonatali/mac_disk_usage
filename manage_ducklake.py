@@ -1,5 +1,6 @@
 import os
 import duckdb
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 import typer
 
 DUCKLAKE_ALIAS = "diskusage_lake"
@@ -22,7 +23,9 @@ class Ducklake:
 
         query = f"SELECT * FROM {DUCKLAKE_ALIAS}.snapshots();"
         if min_id:
-            snapshots = self.con.sql(query + f" WHERE snapshot_id > {min_id};")
+            snapshots: DuckDBPyRelation = self.con.sql(
+                query + f" WHERE snapshot_id > {min_id};"
+            )
         else:
             snapshots = self.con.sql(query)
 
@@ -36,7 +39,9 @@ class Ducklake:
 
         query = f"SELECT * FROM {DUCKLAKE_ALIAS}.{table_name};"
         if snapshot_id is not None:
-            result = self.con.sql(query + f" AT (VERSION => {snapshot_id};")
+            result: DuckDBPyRelation = self.con.sql(
+                query + f" AT (VERSION => {snapshot_id};"
+            )
         else:
             result = self.con.sql(query)
 
@@ -51,6 +56,9 @@ class Ducklake:
         self.con.execute(
             f"CALL ducklake_cleanup_old_files('{DUCKLAKE_ALIAS}', cleanup_all => true);"
         )
+        self.con.execute(
+            f"CALL ducklake_delete_orphaned_files('{DUCKLAKE_ALIAS}', cleanup_all => true);"
+        )
 
     def merge_files(self) -> None:
         """Marge small Parquet files to improve performance"""
@@ -64,7 +72,7 @@ class Ducklake:
         self.close_con()
 
 
-def connect_and_setup_ducklake(catalog_path: str) -> duckdb.DuckDBPyConnection:
+def connect_and_setup_ducklake(catalog_path: str) -> DuckDBPyConnection:
     """
     Connects to DuckDB, loads the DuckLake extension, and attaches the catalog.
 
@@ -86,7 +94,7 @@ def connect_and_setup_ducklake(catalog_path: str) -> duckdb.DuckDBPyConnection:
             "Proceeding with the assumption that it is the correct metadata file."
         )
 
-    con = duckdb.connect()
+    con: DuckDBPyConnection = duckdb.connect()
     try:
         con.execute("INSTALL ducklake;")
         con.execute("LOAD ducklake;")
@@ -122,7 +130,7 @@ def show_data(
 ) -> None:
     """Shows data from a table, optionally from a specific version."""
     dl = Ducklake(catalog_path)
-    rel = dl.get_data(table_name, snapshot_id)
+    rel: DuckDBPyRelation = dl.get_data(table_name, snapshot_id)
     limit = max_rows if max_rows > -1 else None
     rel.show(max_rows=limit)
 
@@ -134,8 +142,8 @@ def prune_history(catalog_path: str, weeks_to_keep: int = 10) -> None:
     dl = Ducklake(catalog_path)
 
     print("Prunning old snapshots...")
-    snapshots = dl.snapshots()
-    to_delete = snapshots.filter(
+    snapshots: DuckDBPyRelation = dl.snapshots()
+    to_delete: DuckDBPyRelation = snapshots.filter(
         f"snapshot_time < now() - INTERVAL '{weeks_to_keep} week'"
     )
     print("The following snapshots will be deleted:")
@@ -151,7 +159,7 @@ def prune_history(catalog_path: str, weeks_to_keep: int = 10) -> None:
 
 
 @app.command()
-def merge_files(catalog_path: str):
+def merge_files(catalog_path: str) -> None:
     """Marge small Parquet files to improve performance"""
 
     dl = Ducklake(catalog_path)
@@ -160,7 +168,7 @@ def merge_files(catalog_path: str):
 
 @app.command()
 def update_extensions() -> None:
-    con = duckdb.connect()
+    con: DuckDBPyConnection = duckdb.connect()
     con.sql("UPDATE EXTENSIONS;").show()
     con.close()
 
