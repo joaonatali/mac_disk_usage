@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 import pandas as pd
+from pandas import DataFrame
 import duckdb
 import subprocess
 import os
@@ -28,19 +29,19 @@ def parse_log_file(file_path: str | Path) -> list[list[str]]:
 
     date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}")
     with open(file_path, "r") as file:
-        lines = file.readlines()
+        lines: list[str] = file.readlines()
 
-    parsed_data = []
-    current_date = None
+    parsed_data: list[list[str]] = []
+    current_date: str = ""
 
     for line in lines:
-        line = line.strip()
+        line: str = line.strip()
         if date_pattern.match(line):  # Identify timestamps
             current_date = line
         elif (
             line and current_date and line[0].isdigit()
         ):  # Data line starts with a digit
-            values = line.split()
+            values: list[str] = line.split()
             if len(values) == 9:  # Ensure correct number of data points
                 parsed_data.append([current_date] + values)
             else:
@@ -74,7 +75,7 @@ def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
         "load_15m",
     ]
 
-    df = pd.DataFrame(parsed_data, columns=columns)
+    df = pd.DataFrame(parsed_data, columns=columns)  # type: ignore
     numeric_columns = columns[1:]
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce")
@@ -157,7 +158,9 @@ def save_to_ducklake(
     """)
     # Register the DataFrame and commit a new snapshot -------------------------------------
     con.register("df_view", df)
-
+    print(
+        f"Attempting to save data to DuckLake: '{catalog_path}', table: '{table_name}'"
+    )
     con.execute(f"""
                 BEGIN TRANSACTION;
                 DELETE FROM {table_name};
@@ -165,6 +168,7 @@ def save_to_ducklake(
                 COMMIT;
                 """)
     con.close()
+    print("Data successfully saved to DuckLake.")
 
 
 def save_to_motherduck(
@@ -241,8 +245,8 @@ def plot_data(df: pd.DataFrame) -> None:
     df : pandas.DataFrame
         The data to plot.
     """
-    df_plot = df[["timestamp", "delta_disk_usage_GB"]].dropna()
-    df_plot = df_plot[df_plot["delta_disk_usage_GB"] > 0]
+    df_plot: DataFrame = df[["timestamp", "delta_disk_usage_GB"]].dropna()  # type: ignore
+    df_plot = df_plot[df_plot["delta_disk_usage_GB"] > 0]  # type: ignore
 
     data_file = "disk_usage_data.txt"
     df_plot.to_csv(
@@ -328,8 +332,8 @@ def main(
     """Parse disk usage log and optionally save to DuckLake/MotherDuck and plot data."""
 
     print("Parsing log file...")
-    parsed_data = parse_log_file(file)
-    df = create_dataframe(parsed_data)
+    parsed_data: list[list[str]] = parse_log_file(file)
+    df: DataFrame = create_dataframe(parsed_data)
 
     if print_df:
         print(df)
