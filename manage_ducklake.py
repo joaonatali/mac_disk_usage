@@ -2,9 +2,12 @@ import os
 import duckdb
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 import typer
+from dotenv import dotenv_values
 
 DUCKLAKE_ALIAS = "diskusage_lake"
-DEFAULT_TABLE_NAME = "disk_usage"
+env_vars: dict[str, str] = dotenv_values(".env")  # type: ignore
+DEFAULT_TABLE_NAME: str = env_vars.get("TABLE_NAME")  # type: ignore
+
 
 app = typer.Typer(
     no_args_is_help=True,
