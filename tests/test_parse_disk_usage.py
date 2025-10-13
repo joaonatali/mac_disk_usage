@@ -3,9 +3,10 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock
 import pandas as pd
+from pandas import DataFrame
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT: Path = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -74,7 +75,7 @@ def test_create_dataframe_builds_expected_columns():
         ],
     ]
 
-    df = pdu.create_dataframe(parsed_rows)
+    df: DataFrame = pdu.create_dataframe(parsed_rows)
 
     assert list(df.columns) == [
         "timestamp",
@@ -94,7 +95,7 @@ def test_create_dataframe_builds_expected_columns():
     assert pd.isna(df.loc[0, "delta_disk_usage_GB"])
 
 
-def test_save_to_ducklake_registers_dataframe(tmp_path, monkeypatch):
+def test_save_to_ducklake_registers_dataframe(tmp_path: Path, monkeypatch) -> None:
     df = pd.DataFrame(
         {
             "timestamp": pd.to_datetime(["2025-09-27T10:05:11Z"]),
@@ -115,7 +116,9 @@ def test_save_to_ducklake_registers_dataframe(tmp_path, monkeypatch):
     mock_con.execute.return_value = None
     connect_mock = Mock(return_value=mock_con)
 
-    catalog_dir = tmp_path / "lake"
+    catalog_dir: Path = tmp_path / "lake"
+    catalog_dir.mkdir(parents=True, exist_ok=True)
+    (catalog_dir / "disk_usage.ducklake").touch()
 
     monkeypatch.setattr(pdu.duckdb, "connect", connect_mock)
 
@@ -130,7 +133,7 @@ def test_save_to_ducklake_registers_dataframe(tmp_path, monkeypatch):
     mock_con.close.assert_called_once()
 
 
-def test_save_to_motherduck_with_token(tmp_path, monkeypatch):
+def test_save_to_motherduck_with_token(tmp_path: Path, monkeypatch) -> None:
     df = pd.DataFrame(
         {
             "timestamp": pd.to_datetime(["2025-09-27T10:05:11Z"]),
@@ -155,7 +158,7 @@ def test_save_to_motherduck_with_token(tmp_path, monkeypatch):
         "MOTHERDUCK_DB_NAME": "custom_db",
     }
 
-    catalog_file = tmp_path / "disk_usage.ducklake"
+    catalog_file: Path = tmp_path / "disk_usage.ducklake"
 
     monkeypatch.setattr(pdu, "load_config", lambda: config)
     monkeypatch.setattr(pdu.duckdb, "connect", connect_mock)
@@ -170,25 +173,27 @@ def test_save_to_motherduck_with_token(tmp_path, monkeypatch):
     mock_con.close.assert_called_once()
 
 
-def test_save_to_motherduck_without_token(monkeypatch):
+def test_save_to_motherduck_without_token(monkeypatch) -> None:
     connect_mock = Mock()
     monkeypatch.setattr(pdu, "load_config", lambda: {})
     monkeypatch.setattr(pdu.duckdb, "connect", connect_mock)
 
     df = pd.DataFrame(  # Empty frame with expected schema
-        columns=[
-            "timestamp",
-            "KB_by_t",
-            "xfrs",
-            "disk_usage_since_boot_MB",
-            "cpu_us",
-            "cpu_sy",
-            "cpu_id",
-            "load_1m",
-            "load_5m",
-            "load_15m",
-            "delta_disk_usage_GB",
-        ]
+        columns=pd.Series(
+            [
+                "timestamp",
+                "KB_by_t",
+                "xfrs",
+                "disk_usage_since_boot_MB",
+                "cpu_us",
+                "cpu_sy",
+                "cpu_id",
+                "load_1m",
+                "load_5m",
+                "load_15m",
+                "delta_disk_usage_GB",
+            ]
+        )
     )
 
     pdu.save_to_motherduck(df, "./data/disk_usage.ducklake")
