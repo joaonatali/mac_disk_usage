@@ -21,3 +21,7 @@ __marimo__
 
 # Mac
 .DS_Store
+
+# DuckLake
+data/disk_usage.ducklake.files
+data/disk_usage.ducklake
