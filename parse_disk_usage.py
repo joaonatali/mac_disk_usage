@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 from pandas import DataFrame
 import duckdb
+from duckdb import DuckDBPyConnection
 import subprocess
 import os
 import typer
@@ -117,8 +118,7 @@ def save_to_ducklake(
     table_name : str, optional
         Target table inside the catalog.
     """
-    import os
-    import duckdb
+    from manage_ducklake import connect_and_setup_ducklake, DUCKLAKE_ALIAS
 
     # Resolve paths and create directories -------------------------------------------------
     catalog_path = os.path.abspath(catalog_path)
@@ -128,17 +128,7 @@ def save_to_ducklake(
 
     os.makedirs(catalog_dir, exist_ok=True)
 
-    # Connect & load the DuckLake extension ------------------------------------------------
-    con = duckdb.connect()
-    con.execute(
-        """
-        INSTALL ducklake;
-        LOAD ducklake;
-        """
-    )
-    # Attach (or re-attach) the catalog ----------------------------------------------------
-    con.execute(f"ATTACH IF NOT EXISTS 'ducklake:{catalog_path}' AS {alias};")
-    con.execute(f"USE {alias};")
+    con: DuckDBPyConnection = connect_and_setup_ducklake(catalog_path)
 
     # Create a new table if it doesn't exist
     con.execute("""
@@ -187,12 +177,12 @@ def save_to_motherduck(
         Path to the DuckLake catalog db.
     """
     config: dict[str, str] = load_config()
-    motherduck_token = config.get("MOTHERDUCK_TOKEN")
+    motherduck_token: str | None = config.get("MOTHERDUCK_TOKEN")
 
     if motherduck_token:
         os.environ["motherduck_token"] = motherduck_token
-        motherduck_db_name_from_env = config.get("MOTHERDUCK_DB_NAME")
-        motherduck_db_name = (
+        motherduck_db_name_from_env: str | None = config.get("MOTHERDUCK_DB_NAME")
+        motherduck_db_name: str = (
             "mac_logging"
             if motherduck_db_name_from_env is None
             else motherduck_db_name_from_env
@@ -202,7 +192,7 @@ def save_to_motherduck(
             f"Attempting to save data to MotherDuck database: '{motherduck_db_name}', table: '{table_name}'"
         )
 
-        con_md = None
+        con_md: DuckDBPyConnection | None = None
         try:
             con_md = duckdb.connect(database="md:")
             con_md.execute(f"CREATE DATABASE IF NOT EXISTS {motherduck_db_name};")
