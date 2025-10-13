@@ -10,10 +10,10 @@ PROJECT_ROOT: Path = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import parse_disk_usage as pdu
+import parse_disk_usage as pdu  # noqa: E402
 
 
-def test_parse_log_file_success(tmp_path):
+def test_parse_log_file_success(tmp_path: Path) -> None:
     log_content = "\n".join(
         [
             "2025-09-27T10:05:11-05:00",
@@ -22,10 +22,10 @@ def test_parse_log_file_success(tmp_path):
             "9 8 7 6 5 4 3 2 1",
         ]
     )
-    log_file = tmp_path / "logged_disk_usage.txt"
+    log_file: Path = tmp_path / "logged_disk_usage.txt"
     log_file.write_text(log_content)
 
-    parsed = pdu.parse_log_file(log_file)
+    parsed: list[list[str]] = pdu.parse_log_file(log_file)
 
     assert parsed == [
         ["2025-09-27T10:05:11-05:00", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
@@ -33,22 +33,22 @@ def test_parse_log_file_success(tmp_path):
     ]
 
 
-def test_parse_log_file_invalid_row(tmp_path):
+def test_parse_log_file_invalid_row(tmp_path: Path) -> None:
     log_content = "\n".join(
         [
             "2025-09-27T10:05:11-05:00",
             "1 2 3 4 5 6 7 8",  # Only eight data points
         ]
     )
-    log_file = tmp_path / "invalid_log.txt"
+    log_file: Path = tmp_path / "invalid_log.txt"
     log_file.write_text(log_content)
 
     with pytest.raises(ValueError, match="Wrong number of fields"):
         pdu.parse_log_file(log_file)
 
 
-def test_create_dataframe_builds_expected_columns():
-    parsed_rows = [
+def test_create_dataframe_builds_expected_columns() -> None:
+    parsed_rows: list[list[str]] = [
         [
             "2025-09-27T10:05:11-05:00",
             "100",
