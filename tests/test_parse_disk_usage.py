@@ -1,9 +1,10 @@
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock
-import pandas as pd
-from pandas import DataFrame
+import polars as pl
+import pyarrow as pa
 import pytest
 
 PROJECT_ROOT: Path = Path(__file__).resolve().parents[1]
@@ -75,7 +76,7 @@ def test_create_dataframe_builds_expected_columns() -> None:
         ],
     ]
 
-    df: DataFrame = pdu.create_dataframe(parsed_rows)
+    df: pl.DataFrame = pdu.create_dataframe(parsed_rows)
 
     assert list(df.columns) == [
         "timestamp",
@@ -90,15 +91,16 @@ def test_create_dataframe_builds_expected_columns() -> None:
         "load_15m",
         "delta_disk_usage_GB",
     ]
-    assert df["timestamp"].dt.tz is not None
-    assert pytest.approx(df.loc[1, "delta_disk_usage_GB"], rel=1e-9) == 2.0
-    assert pd.isna(df.loc[0, "delta_disk_usage_GB"])
+    assert df.schema["timestamp"] == pl.Datetime("us", time_zone="UTC")
+    delta_series = df.get_column("delta_disk_usage_GB")
+    assert pytest.approx(delta_series[1], rel=1e-9) == 2.0
+    assert delta_series[0] is None
 
 
 def test_save_to_ducklake_registers_dataframe(tmp_path: Path, monkeypatch) -> None:
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
-            "timestamp": pd.to_datetime(["2025-09-27T10:05:11Z"]),
+            "timestamp": ["2025-09-27T10:05:11Z"],
             "KB_by_t": [1.0],
             "xfrs": [2.0],
             "disk_usage_since_boot_MB": [1024.0],
@@ -110,6 +112,10 @@ def test_save_to_ducklake_registers_dataframe(tmp_path: Path, monkeypatch) -> No
             "load_15m": [0.3],
             "delta_disk_usage_GB": [0.0],
         }
+    ).with_columns(
+        pl.col("timestamp").str.strptime(
+            pl.Datetime("us", time_zone="UTC"), strict=False
+        )
     )
 
     mock_con = Mock()
@@ -129,14 +135,18 @@ def test_save_to_ducklake_registers_dataframe(tmp_path: Path, monkeypatch) -> No
     expected_catalog = os.path.abspath(os.path.join(catalog_dir, "disk_usage.ducklake"))
     attach_calls = [call for call in mock_con.execute.call_args_list if call.args]
     assert any(f"ducklake:{expected_catalog}" in call.args[0] for call in attach_calls)
-    mock_con.register.assert_called_once_with("df_view", df)
+    register_call = mock_con.register.call_args
+    assert register_call is not None
+    args, kwargs = register_call
+    assert args[0] == "df_view"
+    assert isinstance(args[1], pa.Table)
     mock_con.close.assert_called_once()
 
 
 def test_save_to_motherduck_with_token(tmp_path: Path, monkeypatch) -> None:
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
-            "timestamp": pd.to_datetime(["2025-09-27T10:05:11Z"]),
+            "timestamp": ["2025-09-27T10:05:11Z"],
             "KB_by_t": [1.0],
             "xfrs": [2.0],
             "disk_usage_since_boot_MB": [1024.0],
@@ -148,6 +158,10 @@ def test_save_to_motherduck_with_token(tmp_path: Path, monkeypatch) -> None:
             "load_15m": [0.3],
             "delta_disk_usage_GB": [0.0],
         }
+    ).with_columns(
+        pl.col("timestamp").str.strptime(
+            pl.Datetime("us", time_zone="UTC"), strict=False
+        )
     )
 
     mock_con = Mock()
@@ -178,24 +192,47 @@ def test_save_to_motherduck_without_token(monkeypatch) -> None:
     monkeypatch.setattr(pdu, "load_config", lambda: {})
     monkeypatch.setattr(pdu.duckdb, "connect", connect_mock)
 
-    df = pd.DataFrame(  # Empty frame with expected schema
-        columns=pd.Series(
-            [
-                "timestamp",
-                "KB_by_t",
-                "xfrs",
-                "disk_usage_since_boot_MB",
-                "cpu_us",
-                "cpu_sy",
-                "cpu_id",
-                "load_1m",
-                "load_5m",
-                "load_15m",
-                "delta_disk_usage_GB",
-            ]
-        )
-    )
+    df = pl.DataFrame()
 
     pdu.save_to_motherduck(df, "./data/disk_usage.ducklake")
 
     connect_mock.assert_not_called()
+
+
+def test_plot_data_exports_gnuplot_friendly_file(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    df = pl.DataFrame(
+        {
+            "timestamp": [
+                datetime(2025, 1, 1, tzinfo=timezone.utc),
+                datetime(2025, 1, 2, tzinfo=timezone.utc),
+            ],
+            "delta_disk_usage_GB": [None, 1.5],
+        }
+    )
+
+    captured: dict[str, object] = {}
+
+    class FakeCompletedProcess:
+        def __init__(self) -> None:
+            self.returncode = 0
+            self.stdout = ""
+            self.stderr = ""
+
+    def fake_run(cmd: list[str]) -> FakeCompletedProcess:
+        assert cmd == ["gnuplot", "plot_disk_usage.gp"]
+        data_path = tmp_path / "disk_usage_data.txt"
+        script_path = tmp_path / "plot_disk_usage.gp"
+        captured["data_lines"] = data_path.read_text().splitlines()
+        captured["script"] = script_path.read_text()
+        return FakeCompletedProcess()
+
+    monkeypatch.setattr(pdu, "subprocess", Mock(run=fake_run))
+
+    pdu.plot_data(df)
+
+    assert captured["data_lines"] == ["2025-01-02T00:00:00,1.5"]
+    assert 'plot "disk_usage_data.txt" using 1:2 with points notitle' in captured["script"]  # type: ignore[index]
+    assert not (tmp_path / "disk_usage_data.txt").exists()
+    assert not (tmp_path / "plot_disk_usage.gp").exists()

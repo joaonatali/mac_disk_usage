@@ -1,13 +1,13 @@
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
-import pandas as pd
-from pandas import DataFrame
+
+import polars as pl
+import typer
 import duckdb
 from duckdb import DuckDBPyConnection
-import subprocess
-import os
-import typer
-import sys
 from dotenv import dotenv_values
 
 app = typer.Typer(
@@ -51,7 +51,7 @@ def parse_log_file(file_path: str | Path) -> list[list[str]]:
     return parsed_data
 
 
-def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
+def create_dataframe(parsed_data: list[list[str]]) -> pl.DataFrame:
     """
     Create a DataFrame from parsed data.
 
@@ -60,7 +60,7 @@ def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
         parsed_data: A list of lists containing the parsed log data.
 
     Returns:
-        A pandas DataFrame with appropriate column names and data types.
+        A Polars DataFrame with appropriate column names and data types.
     """
 
     columns = [
@@ -76,26 +76,45 @@ def create_dataframe(parsed_data: list[list[str]]) -> pd.DataFrame:
         "load_15m",
     ]
 
-    df = pd.DataFrame(parsed_data, columns=columns)  # type: ignore
+    df = pl.DataFrame(parsed_data, schema=columns, orient="row")
     numeric_columns = columns[1:]
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce")
 
-    # Calculate the difference in disk usage and time
-    disk_usage_diff_GB = df["disk_usage_since_boot_MB"].diff() / 1024  # type: ignore
-    time_diff_days = df["timestamp"].diff().dt.total_seconds() / (24 * 3600)
+    df: pl.DataFrame = df.with_columns(
+        [
+            pl.col("timestamp").str.strptime(
+                pl.Datetime("us", time_zone="UTC"), strict=False
+            ),
+            *[
+                pl.col(column).cast(pl.Float64, strict=False)
+                for column in numeric_columns
+            ],
+        ]
+    )
 
-    # Avoid division by zero if time difference is zero
-    time_diff_days_no_zeros = time_diff_days.replace(0, pd.NA)
+    df = df.with_columns(
+        [
+            (pl.col("disk_usage_since_boot_MB").diff() / 1024).alias(
+                "disk_usage_diff_GB"
+            ),
+            (
+                pl.col("timestamp").dt.timestamp(time_unit="us").diff()
+                / (24 * 3600 * 1_000_000)
+            ).alias("time_diff_days"),
+        ]
+    )
 
-    # Calculate daily average usage, accounting for missing days
-    df["delta_disk_usage_GB"] = disk_usage_diff_GB / time_diff_days_no_zeros
+    df = df.with_columns(
+        pl.when(pl.col("time_diff_days").is_null() | (pl.col("time_diff_days") == 0))
+        .then(None)
+        .otherwise(pl.col("disk_usage_diff_GB") / pl.col("time_diff_days"))
+        .alias("delta_disk_usage_GB")
+    )
 
-    return df
+    return df.drop(["disk_usage_diff_GB", "time_diff_days"])
 
 
 def save_to_ducklake(
-    df: pd.DataFrame,
+    df: pl.DataFrame,
     catalog_path: str | Path,
     alias: str = "diskusage_lake",
     table_name: str = "disk_usage",
@@ -106,7 +125,7 @@ def save_to_ducklake(
 
     Parameters
     ----------
-    df : pandas.DataFrame
+    df : polars.DataFrame
         The data to write.
     catalog_path : str
         Path to the DuckLake *metadata* file
@@ -118,7 +137,7 @@ def save_to_ducklake(
     table_name : str, optional
         Target table inside the catalog.
     """
-    from manage_ducklake import connect_and_setup_ducklake, DUCKLAKE_ALIAS
+    from manage_ducklake import connect_and_setup_ducklake
 
     # Resolve paths and create directories -------------------------------------------------
     catalog_path = os.path.abspath(catalog_path)
@@ -147,7 +166,7 @@ def save_to_ducklake(
         );
     """)
     # Register the DataFrame and commit a new snapshot -------------------------------------
-    con.register("df_view", df)
+    con.register("df_view", df.to_arrow())
     print(
         f"Attempting to save data to DuckLake: '{catalog_path}', table: '{table_name}'"
     )
@@ -162,7 +181,7 @@ def save_to_ducklake(
 
 
 def save_to_motherduck(
-    df: pd.DataFrame,
+    df: pl.DataFrame,
     catalog_path: str | Path,
     table_name: str = "disk_usage",
 ) -> None:
@@ -171,7 +190,7 @@ def save_to_motherduck(
 
     Parameters
     ----------
-    df : pandas.DataFrame
+    df : polars.DataFrame
         The data to save.
     catalog_path : str
         Path to the DuckLake catalog db.
@@ -226,21 +245,27 @@ def save_to_motherduck(
         )
 
 
-def plot_data(df: pd.DataFrame) -> None:
+def plot_data(df: pl.DataFrame) -> None:
     """
     Plot data in the terminal.
 
     Parameters
     ----------
-    df : pandas.DataFrame
+    df : pl.DataFrame
         The data to plot.
     """
-    df_plot: DataFrame = df[["timestamp", "delta_disk_usage_GB"]].dropna()  # type: ignore
-    df_plot = df_plot[df_plot["delta_disk_usage_GB"] > 0]  # type: ignore
+    df_plot: pl.DataFrame = (
+        df.select(["timestamp", "delta_disk_usage_GB"])
+        .drop_nulls("delta_disk_usage_GB")
+        .filter(pl.col("delta_disk_usage_GB") > 0)
+    )
 
     data_file = "disk_usage_data.txt"
-    df_plot.to_csv(
-        data_file, sep=",", index=False, header=False, date_format="%Y-%m-%dT%H:%M:%S"
+    df_plot.write_csv(
+        data_file,
+        separator=",",
+        datetime_format="%Y-%m-%dT%H:%M:%S",
+        include_header=False,
     )
 
     gnuplot_script = """
@@ -267,12 +292,12 @@ def plot_data(df: pd.DataFrame) -> None:
     else:
         print(f"Gnuplot exited with error code {ret.returncode}", file=sys.stderr)
         print(f"Stdout: {ret.stdout}", file=sys.stderr)
-        print(f"Stderr: {ret.stderr}", file=sys.stderr)
+    print(f"Stderr: {ret.stderr}", file=sys.stderr)
 
 
 def load_config() -> dict[str, str]:
     """Loads .env file and returns a dictionary of non-None values."""
-    env_vars = dotenv_values(".env")
+    env_vars: dict[str, str | None] = dotenv_values(".env")
     return {k: v for k, v in env_vars.items() if v is not None}
 
 
@@ -323,7 +348,7 @@ def main(
 
     print("Parsing log file...")
     parsed_data: list[list[str]] = parse_log_file(file)
-    df: DataFrame = create_dataframe(parsed_data)
+    df: pl.DataFrame = create_dataframe(parsed_data)
 
     if print_df:
         print(df)
