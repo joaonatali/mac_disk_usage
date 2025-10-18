@@ -806,3 +806,23 @@
               disk0       cpu    load average
     KB/t xfrs   MB  us sy id   1m   5m   15m
    22.48 9770614 214536.77   3  2 95  3.13 2.20 2.25
+2025-10-13T10:03:08-05:00
+              disk0       cpu    load average
+    KB/t xfrs   MB  us sy id   1m   5m   15m
+   22.05 10433525 224646.02   3  2 95  3.27 2.58 2.43
+2025-10-14T10:03:06-05:00
+              disk0       cpu    load average
+    KB/t xfrs   MB  us sy id   1m   5m   15m
+   21.92 10824527 231751.36   3  2 95  1.53 1.74 2.29
+2025-10-15T10:00:01-05:00
+              disk0       cpu    load average
+    KB/t xfrs   MB  us sy id   1m   5m   15m
+   22.26 11360972 247010.40   3  2 95  1.03 1.38 2.05
+2025-10-16T10:10:05-05:00
+              disk0       cpu    load average
+    KB/t xfrs   MB  us sy id   1m   5m   15m
+   21.99 12014744 258045.75   3  2 95  24.25 11.26 7.43
+2025-10-17T10:00:00-05:00
+              disk0       cpu    load average
+    KB/t xfrs   MB  us sy id   1m   5m   15m
+   22.14 12339885 266828.16   3  2 95  1.64 1.80 2.27
