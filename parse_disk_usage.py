@@ -292,7 +292,7 @@ def plot_data(df: pl.DataFrame) -> None:
     else:
         print(f"Gnuplot exited with error code {ret.returncode}", file=sys.stderr)
         print(f"Stdout: {ret.stdout}", file=sys.stderr)
-    print(f"Stderr: {ret.stderr}", file=sys.stderr)
+        print(f"Stderr: {ret.stderr}", file=sys.stderr)
 
 
 def load_config() -> dict[str, str]:
