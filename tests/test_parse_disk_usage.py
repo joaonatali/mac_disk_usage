@@ -17,9 +17,9 @@ import parse_disk_usage as pdu  # noqa: E402
 def test_parse_log_file_success(tmp_path: Path) -> None:
     log_content = "\n".join(
         [
-            "2025-09-27T10:05:11-05:00",
+            "2025-09-27T10:05:11-05:00 14.8.3",
             "1 2 3 4 5 6 7 8 9",
-            "2025-09-27T12:15:42-05:00",
+            "2025-09-27T12:15:42-05:00 14.8.4",
             "9 8 7 6 5 4 3 2 1",
         ]
     )
@@ -29,15 +29,68 @@ def test_parse_log_file_success(tmp_path: Path) -> None:
     parsed: list[list[str]] = pdu.parse_log_file(log_file)
 
     assert parsed == [
-        ["2025-09-27T10:05:11-05:00", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
-        ["2025-09-27T12:15:42-05:00", "9", "8", "7", "6", "5", "4", "3", "2", "1"],
+        [
+            "2025-09-27T10:05:11-05:00",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "14.8.3",
+        ],
+        [
+            "2025-09-27T12:15:42-05:00",
+            "9",
+            "8",
+            "7",
+            "6",
+            "5",
+            "4",
+            "3",
+            "2",
+            "1",
+            "14.8.4",
+        ],
+    ]
+
+
+def test_parse_log_file_single_entry(tmp_path: Path) -> None:
+    log_content = "\n".join(
+        [
+            "2025-09-27T10:05:11-05:00 14.8.3",
+            "1 2 3 4 5 6 7 8 9",
+        ]
+    )
+    log_file: Path = tmp_path / "logged_disk_usage.txt"
+    log_file.write_text(log_content)
+
+    parsed: list[list[str | None]] = pdu.parse_log_file(log_file)
+
+    assert parsed == [
+        [
+            "2025-09-27T10:05:11-05:00",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "14.8.3",
+        ]
     ]
 
 
 def test_parse_log_file_invalid_row(tmp_path: Path) -> None:
     log_content = "\n".join(
         [
-            "2025-09-27T10:05:11-05:00",
+            "2025-09-27T10:05:11-05:00 14.8.3",
             "1 2 3 4 5 6 7 8",  # Only eight data points
         ]
     )
@@ -61,6 +114,7 @@ def test_create_dataframe_builds_expected_columns() -> None:
             "0.1",
             "0.2",
             "0.3",
+            "14.8.3",
         ],
         [
             "2025-09-28T10:05:11-05:00",
@@ -73,6 +127,7 @@ def test_create_dataframe_builds_expected_columns() -> None:
             "0.2",
             "0.3",
             "0.4",
+            "14.8.4",
         ],
     ]
 
@@ -90,6 +145,7 @@ def test_create_dataframe_builds_expected_columns() -> None:
         "load_5m",
         "load_15m",
         "delta_disk_usage_GB",
+        "macos_version",
     ]
     assert df.schema["timestamp"] == pl.Datetime("us", time_zone="UTC")
     delta_series = df.get_column("delta_disk_usage_GB")
@@ -111,6 +167,7 @@ def test_save_to_ducklake_registers_dataframe(tmp_path: Path, monkeypatch) -> No
             "load_5m": [0.2],
             "load_15m": [0.3],
             "delta_disk_usage_GB": [0.0],
+            "macos_version": ["14.8.3"],
         }
     ).with_columns(
         pl.col("timestamp").str.strptime(
@@ -157,6 +214,7 @@ def test_save_to_motherduck_with_token(tmp_path: Path, monkeypatch) -> None:
             "load_5m": [0.2],
             "load_15m": [0.3],
             "delta_disk_usage_GB": [0.0],
+            "macos_version": ["14.8.3"],
         }
     ).with_columns(
         pl.col("timestamp").str.strptime(
@@ -209,6 +267,7 @@ def test_plot_data_exports_gnuplot_friendly_file(tmp_path: Path, monkeypatch) ->
                 datetime(2025, 1, 2, tzinfo=timezone.utc),
             ],
             "delta_disk_usage_GB": [None, 1.5],
+            "macos_version": ["14.7.6", "14.7.6"],
         }
     )
 

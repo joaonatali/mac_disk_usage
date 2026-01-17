@@ -16,6 +16,22 @@ app = typer.Typer(
 )
 
 
+DISK_USAGE_TABLE_COLUMNS: list[str] = [
+    "timestamp",
+    "KB_by_t",
+    "xfrs",
+    "disk_usage_since_boot_MB",
+    "cpu_us",
+    "cpu_sy",
+    "cpu_id",
+    "load_1m",
+    "load_5m",
+    "load_15m",
+    "delta_disk_usage_GB",
+    "macos_version",
+]
+
+
 def parse_log_file(file_path: str | Path) -> list[list[str]]:
     """
     Parses the disk usage log file.
@@ -34,17 +50,22 @@ def parse_log_file(file_path: str | Path) -> list[list[str]]:
 
     parsed_data: list[list[str]] = []
     current_date: str = ""
+    current_macos_version: str = ""
 
     for line in lines:
         line: str = line.strip()
-        if date_pattern.match(line):  # Identify timestamps
-            current_date = line
+        if date_pattern.match(line):  # Identify timestamps with macos version
+            tokens = line.split()
+            if len(tokens) != 2:
+                raise ValueError(f"Timestamp line missing macos version: {line}")
+            current_date = tokens[0]
+            current_macos_version = tokens[1]
         elif (
             line and current_date and line[0].isdigit()
         ):  # Data line starts with a digit
             values: list[str] = line.split()
             if len(values) == 9:  # Ensure correct number of data points
-                parsed_data.append([current_date] + values)
+                parsed_data.append([current_date] + values + [current_macos_version])
             else:
                 raise ValueError(f"Wrong number of fields in line: {values}")
 
@@ -63,21 +84,11 @@ def create_dataframe(parsed_data: list[list[str]]) -> pl.DataFrame:
         A Polars DataFrame with appropriate column names and data types.
     """
 
-    columns = [
-        "timestamp",
-        "KB_by_t",
-        "xfrs",
-        "disk_usage_since_boot_MB",
-        "cpu_us",
-        "cpu_sy",
-        "cpu_id",
-        "load_1m",
-        "load_5m",
-        "load_15m",
-    ]
+    base_columns = DISK_USAGE_TABLE_COLUMNS[:-2]
+    columns = base_columns + ["macos_version"]
 
     df = pl.DataFrame(parsed_data, schema=columns, orient="row")
-    numeric_columns = columns[1:]
+    numeric_columns = base_columns[1:]
 
     df: pl.DataFrame = df.with_columns(
         [
@@ -90,6 +101,7 @@ def create_dataframe(parsed_data: list[list[str]]) -> pl.DataFrame:
             ],
         ]
     )
+    df = df.with_columns(pl.col("macos_version").cast(pl.Utf8, strict=False))
 
     df = df.with_columns(
         [
@@ -110,7 +122,7 @@ def create_dataframe(parsed_data: list[list[str]]) -> pl.DataFrame:
         .alias("delta_disk_usage_GB")
     )
 
-    return df.drop(["disk_usage_diff_GB", "time_diff_days"])
+    return df.select(DISK_USAGE_TABLE_COLUMNS)
 
 
 def save_to_ducklake(
@@ -162,7 +174,8 @@ def save_to_ducklake(
             load_1m DOUBLE,
             load_5m DOUBLE,
             load_15m DOUBLE,
-            delta_disk_usage_GB DOUBLE
+            delta_disk_usage_GB DOUBLE,
+            macos_version VARCHAR
         );
     """)
     # Register the DataFrame and commit a new snapshot -------------------------------------
@@ -170,10 +183,12 @@ def save_to_ducklake(
     print(
         f"Attempting to save data to DuckLake: '{catalog_path}', table: '{table_name}'"
     )
+    insert_columns = ", ".join(DISK_USAGE_TABLE_COLUMNS)
     con.execute(f"""
                 BEGIN TRANSACTION;
                 DELETE FROM {table_name};
-                INSERT INTO {table_name} SELECT * FROM df_view;
+                INSERT INTO {table_name} ({insert_columns})
+                SELECT {insert_columns} FROM df_view;
                 COMMIT;
                 """)
     con.close()
