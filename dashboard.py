@@ -1,24 +1,27 @@
 # /// script
 # requires-python = ">=3.13"
 # dependencies = [
-#     "altair==5.5.0",
-#     "duckdb==1.4.1",
-#     "numpy==2.3.4",
-#     "openai==2.6.1",
-#     "polars[pyarrow]==1.34.0",
-#     "python-dotenv==1.1.1",
-#     "python-lsp-ruff==2.3.0",
-#     "python-lsp-server==1.13.1",
-#     "scikit-learn==1.7.2",
-#     "sqlglot==27.28.1",
-#     "typer==0.20.0",
-#     "websockets==15.0.1",
+#     "altair>=6.0.0",
+#     "duckdb>=1.4.2",
+#     "marimo>=0.19.4",
+#     "numpy>=2.3.4",
+#     "openai>=2.6.1",
+#     "polars[pyarrow]>=1.36.0",
+#     "pydantic-ai==1.44.0",
+#     "python-dotenv>=1.1.1",
+#     "python-lsp-ruff>=2.3.0",
+#     "python-lsp-server>=1.14.0",
+#     "ruff>=0.14.8",
+#     "scikit-learn>=1.7.2",
+#     "sqlglot>=28.1.0",
+#     "typer>=0.20.0",
+#     "websockets>=15.0.1",
 # ]
 # ///
 
 import marimo
 
-__generated_with = "0.18.0"
+__generated_with = "0.19.4"
 app = marimo.App(width="medium")
 
 with app.setup(hide_code=True):
@@ -113,6 +116,22 @@ def _(version_selector):
     return (full_data,)
 
 
+@app.cell
+def _():
+    _df = mo.sql(
+        f"""
+        SELECT
+            macos_version,
+            COUNT(*) AS nrows,
+            AVG(CASE WHEN delta_disk_usage_GB > 0 THEN delta_disk_usage_GB ELSE NULL END) AS avg_disk_usage
+        FROM disk_usage.disk_usage
+        GROUP BY ALL
+        ORDER BY macos_version
+        """
+    )
+    return
+
+
 @app.cell(hide_code=True)
 def _(snapshots_df):
     version_selector = mo.ui.slider(
@@ -127,11 +146,27 @@ def _(snapshots_df):
 
 @app.cell(hide_code=True)
 def _(full_data, version_selector):
-    chart_ts = (
-        alt.Chart(data=full_data.filter(pl.col("delta_disk_usage_GB") > 0))
-        .mark_point()
-        .encode(x="timestamp", y="delta_disk_usage_GB", tooltip="timestamp")
-    )
+    if "macos_version" in full_data:
+        chart_ts = (
+            alt.Chart(data=full_data.filter(pl.col("delta_disk_usage_GB") > 0))
+            .mark_point()
+            .encode(
+                x="timestamp",
+                y="delta_disk_usage_GB",
+                color="macos_version:N",
+                tooltip=["timestamp", "macos_version"],
+            )
+        )
+    else:
+        chart_ts = (
+            alt.Chart(data=full_data.filter(pl.col("delta_disk_usage_GB") > 0))
+            .mark_point()
+            .encode(
+                x="timestamp",
+                y="delta_disk_usage_GB",
+                tooltip=["timestamp"],
+            )
+        )
 
     mo.md(f"""
     ## Disk Usage Time Series
@@ -148,7 +183,7 @@ def _(full_data, version_selector):
 @app.cell(hide_code=True)
 def _(full_data):
     metrics = [m for m in full_data.columns if (not m.startswith("time"))]
-    metric_selector = mo.ui.multiselect(metrics, value=metrics[-1:])
+    metric_selector = mo.ui.multiselect(metrics, value=metrics[-2:-1])
     return (metric_selector,)
 
 
@@ -228,6 +263,7 @@ def _(full_data):
         and col != "timestamp"
         and col != "xfrs"
         and col != "disk_usage_since_boot_MB"
+        and col != "macos_version"
     ]
     X = df_clean.select(feature_columns)
     y = df_clean.select("delta_disk_usage_GB")
