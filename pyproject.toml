@@ -5,10 +5,14 @@ description = "Setup an automated logger for disk usage in your Mac"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "duckdb>=1.4.0",
+    "duckdb<=1.5.2",
     "polars>=1.34.0",
     "pyarrow>=21.0.0",
     "python-dotenv[cli]>=1.1.0",
     "typer>=0.16.0",
     "pytest",
 ]
+
+[tool.uv]
+# Allows 'duckdb' to be any age while other packages follow the global rule
+exclude-newer-package = { "duckdb" = "2099-01-01T00:00:00Z" }

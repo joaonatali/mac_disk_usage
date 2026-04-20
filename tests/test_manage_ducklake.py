@@ -118,16 +118,39 @@ def test_ducklake_prune_history_executes_expected_calls(monkeypatch) -> None:
     ]
 
 
-def test_ducklake_merge_files_invokes_procedure(monkeypatch) -> None:
+def test_ducklake_checkpoint_runs_statement(monkeypatch) -> None:
     mock_con = Mock()
     monkeypatch.setattr(mdl, "connect_and_setup_ducklake", Mock(return_value=mock_con))
     dl = mdl.Ducklake("catalog.ducklake")
 
-    dl.merge_files()
+    dl.checkpoint()
 
-    mock_con.execute.assert_called_once_with(
-        "CALL diskusage_lake.merge_adjacent_files();"
+    mock_con.execute.assert_called_once_with("CHECKPOINT;")
+
+
+def test_ducklake_checkpoint_sets_requested_options(monkeypatch) -> None:
+    mock_con = Mock()
+    monkeypatch.setattr(mdl, "connect_and_setup_ducklake", Mock(return_value=mock_con))
+    dl = mdl.Ducklake("catalog.ducklake")
+
+    dl.checkpoint(
+        expire_older_than="6 week",
+        delete_older_than="3 day",
+        rewrite_delete_threshold=0.5,
     )
+
+    assert mock_con.execute.call_args_list == [
+        call(
+            "CALL diskusage_lake.set_option('expire_older_than', '6 week');"
+        ),
+        call(
+            "CALL diskusage_lake.set_option('delete_older_than', '3 day');"
+        ),
+        call(
+            "CALL diskusage_lake.set_option('rewrite_delete_threshold', 0.5);"
+        ),
+        call("CHECKPOINT;"),
+    ]
 
 
 def test_ducklake_close_con_closes_connection(monkeypatch) -> None:
@@ -241,14 +264,51 @@ def test_prune_history_cli_respects_abort(monkeypatch, tmp_path):
     assert "History not prunned." in result.stdout
 
 
-def test_merge_files_cli_invokes_ducklake(monkeypatch, tmp_path):
+def test_checkpoint_cli_invokes_ducklake(monkeypatch, tmp_path):
     dummy_dl = Mock()
     monkeypatch.setattr(mdl, "Ducklake", Mock(return_value=dummy_dl))
 
-    result = runner.invoke(mdl.app, ["merge-files", str(tmp_path / "catalog.ducklake")])
+    result = runner.invoke(
+        mdl.app,
+        [
+            "checkpoint",
+            str(tmp_path / "catalog.ducklake"),
+            "--expire-older-than",
+            "4 week",
+            "--delete-older-than",
+            "2 day",
+            "--rewrite-delete-threshold",
+            "0.4",
+            "--yes",
+        ],
+    )
 
     assert result.exit_code == 0
-    dummy_dl.merge_files.assert_called_once_with()
+    dummy_dl.checkpoint.assert_called_once_with(
+        expire_older_than="4 week",
+        delete_older_than="2 day",
+        rewrite_delete_threshold=0.4,
+    )
+
+
+def test_checkpoint_cli_respects_abort(monkeypatch, tmp_path):
+    dummy_dl = Mock()
+    monkeypatch.setattr(mdl, "Ducklake", Mock(return_value=dummy_dl))
+    monkeypatch.setattr("builtins.input", lambda _: "n")
+
+    result = runner.invoke(
+        mdl.app,
+        [
+            "checkpoint",
+            str(tmp_path / "catalog.ducklake"),
+            "--expire-older-than",
+            "4 week",
+        ],
+    )
+
+    assert result.exit_code == 0
+    dummy_dl.checkpoint.assert_not_called()
+    assert "Checkpoint not run." in result.stdout
 
 
 def test_update_extensions_runs_duckdb(monkeypatch) -> None:

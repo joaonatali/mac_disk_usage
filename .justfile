@@ -36,12 +36,12 @@ snapshots:
 show rows='20':
     uv run manage_ducklake.py show-data {{DL_CATALOG}} --max-rows {{rows}}
 
-# Merge files in DuckLake
-merge:
-    uv run manage_ducklake.py merge-files {{DL_CATALOG}}
+# Run DuckLake maintenance checkpoint
+checkpoint weeks='8':
+    uv run manage_ducklake.py checkpoint {{DL_CATALOG}} --expire-older-than "{{weeks}} week" --delete-older-than "{{weeks}} week" --yes
 
-# Prune history from ducklake
-prune weeks='10':
+# Prune history from ducklake keeping N weeks
+prune weeks='8':
     uv run manage_ducklake.py prune-history {{DL_CATALOG}} --weeks-to-keep {{weeks}}
 
 # Run unit tests

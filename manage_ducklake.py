@@ -63,10 +63,28 @@ class Ducklake:
             f"CALL ducklake_delete_orphaned_files('{DUCKLAKE_ALIAS}', cleanup_all => true);"
         )
 
-    def merge_files(self) -> None:
-        """Marge small Parquet files to improve performance"""
+    def checkpoint(
+        self,
+        expire_older_than: str | None = None,
+        delete_older_than: str | None = None,
+        rewrite_delete_threshold: float | None = None,
+    ) -> None:
+        """Run DuckLake maintenance through the CHECKPOINT statement."""
 
-        self.con.execute(f"CALL {DUCKLAKE_ALIAS}.merge_adjacent_files();")
+        if expire_older_than is not None:
+            self.con.execute(
+                f"CALL {DUCKLAKE_ALIAS}.set_option('expire_older_than', '{expire_older_than}');"
+            )
+        if delete_older_than is not None:
+            self.con.execute(
+                f"CALL {DUCKLAKE_ALIAS}.set_option('delete_older_than', '{delete_older_than}');"
+            )
+        if rewrite_delete_threshold is not None:
+            self.con.execute(
+                f"CALL {DUCKLAKE_ALIAS}.set_option('rewrite_delete_threshold', {rewrite_delete_threshold});"
+            )
+
+        self.con.execute("CHECKPOINT;")
 
     def close_con(self) -> None:
         self.con.close()
@@ -162,11 +180,60 @@ def prune_history(catalog_path: str, weeks_to_keep: int = 10) -> None:
 
 
 @app.command()
-def merge_files(catalog_path: str) -> None:
-    """Marge small Parquet files to improve performance"""
+def checkpoint(
+    catalog_path: str,
+    expire_older_than: str | None = typer.Option(
+        None,
+        help="Set DuckLake expire_older_than before running CHECKPOINT, e.g. '8 week'.",
+    ),
+    delete_older_than: str | None = typer.Option(
+        None,
+        help="Set DuckLake delete_older_than before running CHECKPOINT, e.g. '8 week'.",
+    ),
+    rewrite_delete_threshold: float | None = typer.Option(
+        None,
+        min=0.0,
+        max=1.0,
+        help="Set DuckLake rewrite_delete_threshold before running CHECKPOINT.",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Run without confirmation prompt.",
+    ),
+) -> None:
+    """Run DuckLake's bundled maintenance flow via CHECKPOINT."""
 
     dl = Ducklake(catalog_path)
-    dl.merge_files()
+    options: list[str] = []
+    if expire_older_than is not None:
+        options.append(f"expire_older_than={expire_older_than}")
+    if delete_older_than is not None:
+        options.append(f"delete_older_than={delete_older_than}")
+    if rewrite_delete_threshold is not None:
+        options.append(f"rewrite_delete_threshold={rewrite_delete_threshold}")
+
+    print("Running DuckLake CHECKPOINT.")
+    if options:
+        print("Applying options:")
+        for option in options:
+            print(f" - {option}")
+    else:
+        print("Applying DuckLake default checkpoint behavior.")
+
+    if not yes:
+        choice = input("\nProceed (y/N)? ")
+        if choice.lower() != "y":
+            print("Checkpoint not run.")
+            return
+
+    dl.checkpoint(
+        expire_older_than=expire_older_than,
+        delete_older_than=delete_older_than,
+        rewrite_delete_threshold=rewrite_delete_threshold,
+    )
+    print("Checkpoint complete.")
 
 
 @app.command()
