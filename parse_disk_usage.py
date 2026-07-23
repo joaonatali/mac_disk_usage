@@ -1,12 +1,13 @@
 import os
+import platform
 import re
 import subprocess
 import sys
 from pathlib import Path
 
+import duckdb
 import polars as pl
 import typer
-import duckdb
 from duckdb import DuckDBPyConnection
 from dotenv import dotenv_values
 
@@ -30,6 +31,97 @@ DISK_USAGE_TABLE_COLUMNS: list[str] = [
     "delta_disk_usage_GB",
     "macos_version",
 ]
+PERSISTED_DISK_USAGE_TABLE_COLUMNS: list[str] = [
+    *DISK_USAGE_TABLE_COLUMNS,
+    "machine_name",
+]
+
+
+def get_machine_name(config: dict[str, str] | None = None) -> str:
+    """Return the configured machine name or a name reported by macOS.
+
+    ``MACHINE_NAME`` may be set in the environment or in ``.env``. When it is
+    absent, macOS's user-facing Computer Name is preferred, with the platform
+    hostname as a portable fallback.
+    """
+    if config is None:
+        config = load_config()
+
+    configured_name = os.environ.get("MACHINE_NAME") or config.get("MACHINE_NAME")
+    if configured_name and configured_name.strip():
+        return configured_name.strip()
+
+    try:
+        result = subprocess.run(
+            ["/usr/sbin/scutil", "--get", "ComputerName"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        system_name = result.stdout.strip()
+        if system_name:
+            return system_name
+    except (OSError, subprocess.CalledProcessError):
+        pass
+
+    system_name = platform.node().strip()
+    if system_name:
+        return system_name
+
+    raise RuntimeError(
+        "Unable to determine a machine name. Set MACHINE_NAME in .env."
+    )
+
+
+def add_machine_name(df: pl.DataFrame, machine_name: str) -> pl.DataFrame:
+    """Add the stable machine identifier used by persisted tables."""
+    normalized_name = machine_name.strip()
+    if not normalized_name:
+        raise ValueError("machine_name must not be empty")
+    return df.with_columns(pl.lit(normalized_name).alias("machine_name")).select(
+        PERSISTED_DISK_USAGE_TABLE_COLUMNS
+    )
+
+
+def create_disk_usage_table(
+    con: DuckDBPyConnection, table_name: str = "disk_usage"
+) -> None:
+    """Create a disk-usage table with the shared local/remote schema."""
+    con.execute(f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            timestamp TIMESTAMP WITH TIME ZONE,
+            KB_by_t DOUBLE,
+            xfrs DOUBLE,
+            disk_usage_since_boot_MB DOUBLE,
+            cpu_us DOUBLE,
+            cpu_sy DOUBLE,
+            cpu_id DOUBLE,
+            load_1m DOUBLE,
+            load_5m DOUBLE,
+            load_15m DOUBLE,
+            delta_disk_usage_GB DOUBLE,
+            macos_version VARCHAR,
+            machine_name VARCHAR
+        );
+    """)
+
+
+def ensure_machine_name_schema(
+    con: DuckDBPyConnection, table_name: str, machine_name: str
+) -> None:
+    """Add and backfill ``machine_name`` on a legacy table when necessary."""
+    columns = {
+        row[0]: row for row in con.execute(f"DESCRIBE {table_name};").fetchall()
+    }
+    machine_column = columns.get("machine_name")
+    if machine_column is None:
+        con.execute(f"ALTER TABLE {table_name} ADD COLUMN machine_name VARCHAR;")
+        machine_column = ("machine_name", "VARCHAR", "YES")
+
+    con.execute(
+        f"UPDATE {table_name} SET machine_name = ? WHERE machine_name IS NULL;",
+        [machine_name],
+    )
 
 
 def parse_log_file(file_path: str | Path) -> list[list[str]]:
@@ -161,29 +253,21 @@ def save_to_ducklake(
 
     con: DuckDBPyConnection = connect_and_setup_ducklake(catalog_path)
 
-    # Create a new table if it doesn't exist
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS disk_usage (
-            timestamp TIMESTAMP WITH TIME ZONE,
-            KB_by_t DOUBLE,
-            xfrs DOUBLE,
-            disk_usage_since_boot_MB DOUBLE,
-            cpu_us DOUBLE,
-            cpu_sy DOUBLE,
-            cpu_id DOUBLE,
-            load_1m DOUBLE,
-            load_5m DOUBLE,
-            load_15m DOUBLE,
-            delta_disk_usage_GB DOUBLE,
-            macos_version VARCHAR
-        );
-    """)
+    machine_names = df.get_column("machine_name").unique().to_list()
+    if len(machine_names) != 1 or not machine_names[0]:
+        con.close()
+        raise ValueError("The DataFrame must contain exactly one machine_name")
+    machine_name = str(machine_names[0])
+
+    create_disk_usage_table(con, table_name)
+    ensure_machine_name_schema(con, table_name, machine_name)
+
     # Register the DataFrame and commit a new snapshot -------------------------------------
     con.register("df_view", df.to_arrow())
     print(
         f"Attempting to save data to DuckLake: '{catalog_path}', table: '{table_name}'"
     )
-    insert_columns = ", ".join(DISK_USAGE_TABLE_COLUMNS)
+    insert_columns = ", ".join(PERSISTED_DISK_USAGE_TABLE_COLUMNS)
     con.execute(f"""
                 BEGIN TRANSACTION;
                 DELETE FROM {table_name};
@@ -199,6 +283,7 @@ def save_to_motherduck(
     df: pl.DataFrame,
     catalog_path: str | Path,
     table_name: str = "disk_usage",
+    machine_name: str | None = None,
 ) -> None:
     """
     Save data to a MotherDuck database.
@@ -209,11 +294,17 @@ def save_to_motherduck(
         The data to save.
     catalog_path : str
         Path to the DuckLake catalog db.
+    table_name : str, optional
+        Target table in DuckLake and MotherDuck.
+    machine_name : str, optional
+        Stable machine label. Resolved from configuration or macOS when omitted.
     """
     config: dict[str, str] = load_config()
     motherduck_token: str | None = config.get("MOTHERDUCK_TOKEN")
 
     if motherduck_token:
+        if machine_name is None:
+            machine_name = get_machine_name(config)
         os.environ["motherduck_token"] = motherduck_token
         motherduck_db_name_from_env: str | None = config.get("MOTHERDUCK_DB_NAME")
         motherduck_db_name: str = (
@@ -233,13 +324,28 @@ def save_to_motherduck(
             con_md.execute(f"USE {motherduck_db_name};")
             con_md.execute(f"ATTACH 'ducklake:{catalog_path}' AS disk_usage_lake;")
 
-            con_md.execute(f"""
-                           BEGIN TRANSACTION;
-                           DROP TABLE IF EXISTS {table_name};
-                           CREATE TABLE {table_name} AS
-                           SELECT * FROM disk_usage_lake.{table_name};
-                           COMMIT;
-                           """)
+            ensure_machine_name_schema(
+                con_md, f"disk_usage_lake.{table_name}", machine_name
+            )
+            create_disk_usage_table(con_md, table_name)
+            ensure_machine_name_schema(con_md, table_name, machine_name)
+
+            insert_columns = ", ".join(PERSISTED_DISK_USAGE_TABLE_COLUMNS)
+            con_md.execute("BEGIN TRANSACTION;")
+            con_md.execute(
+                f"DELETE FROM {table_name} WHERE machine_name = ?;",
+                [machine_name],
+            )
+            con_md.execute(
+                f"""
+                INSERT INTO {table_name} ({insert_columns})
+                SELECT {insert_columns}
+                FROM disk_usage_lake.{table_name}
+                WHERE machine_name = ?;
+                """,
+                [machine_name],
+            )
+            con_md.execute("COMMIT;")
 
             print(
                 f"Data successfully saved to MotherDuck: {motherduck_db_name}.{table_name}."
@@ -365,6 +471,11 @@ def main(
     parsed_data: list[list[str]] = parse_log_file(file)
     df: pl.DataFrame = create_dataframe(parsed_data)
 
+    machine_name: str | None = None
+    if save_db or save_md:
+        machine_name = get_machine_name()
+        df = add_machine_name(df, machine_name)
+
     if print_df:
         print(df)
 
@@ -375,7 +486,12 @@ def main(
         save_to_ducklake(df, catalog_path=db_path, table_name=table_name)
 
     if save_md:
-        save_to_motherduck(df, catalog_path=db_path, table_name=table_name)
+        save_to_motherduck(
+            df,
+            catalog_path=db_path,
+            table_name=table_name,
+            machine_name=machine_name,
+        )
 
 
 if __name__ == "__main__":

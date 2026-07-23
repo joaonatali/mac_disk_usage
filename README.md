@@ -20,7 +20,18 @@ uv run dotenv set PATH_TO_DATA /Users/{you}/repos/mac_disk_usage/data
 uv run dotenv set PATH_TO_LOGS /Users/{you}/repos/mac_disk_usage/logs
 uv run dotenv set DL_CATALOG /Users/{you}/repos/mac_disk_usage/data/disk_usage.ducklake
 uv run dotenv set TABLE_NAME disk_usage
+uv run dotenv set MACHINE_NAME your-private-machine-label
 ```
+
+`MACHINE_NAME` is stored with every row in both DuckLake and MotherDuck. Use a
+stable, unique label for each Mac. It may be an alias and does not need to be the
+computer's real hostname. The value stays in the untracked `.env` file and must
+not be committed to the repository.
+
+If `MACHINE_NAME` is omitted, the logger uses the macOS Computer Name reported
+by `scutil --get ComputerName`. On non-macOS systems, or if that value is not
+available, it falls back to the system hostname. Setting `MACHINE_NAME` always
+overrides these detected values.
 
 - Setup scheduled job
 ```
@@ -38,6 +49,18 @@ brew install gnuplot
 ```
 uv run dotenv set MOTHERDUCK_TOKEN your_token
 ```
+
+### Upgrading an existing single-machine database
+
+Before adding another machine, stop MotherDuck uploads from older copies of the
+code and run `just save` once from the original machine. The first save adds the
+`machine_name` column to its local DuckLake and the existing MotherDuck table,
+then assigns that machine's configured or detected name to all legacy rows.
+After verifying the upload, update and enable the remaining machines.
+
+This order matters: the first upgraded machine is assumed to own all rows that
+predate the `machine_name` column. Later uploads replace only the rows belonging
+to their own machine and leave every other machine's history intact.
 
 ## Usage
 

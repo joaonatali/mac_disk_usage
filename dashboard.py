@@ -21,11 +21,10 @@
 
 import marimo
 
-__generated_with = "0.19.4"
+__generated_with = "0.23.13"
 app = marimo.App(width="medium")
 
 with app.setup(hide_code=True):
-    # Initialization code that runs before all other cells
     import marimo as mo
     import polars as pl
     import altair as alt
@@ -59,7 +58,7 @@ def _():
 def _():
     snapshots_df = mo.sql(
         f"""
-        FROM ducklake_snapshots('disk_usage');
+        FROM ducklake_snapshots('disk_usage') ORDER BY snapshot_id DESC;
         """
     )
     return (snapshots_df,)
@@ -264,6 +263,7 @@ def _(full_data):
         and col != "xfrs"
         and col != "disk_usage_since_boot_MB"
         and col != "macos_version"
+        and col != "machine_name"
     ]
     X = df_clean.select(feature_columns)
     y = df_clean.select("delta_disk_usage_GB")
