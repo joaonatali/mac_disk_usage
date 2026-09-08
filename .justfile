@@ -11,6 +11,10 @@ TABLE_NAME := env("TABLE_NAME", "disk_usage")
 load:
     uv run load_schedule.py
 
+# Collect one disk usage data point immediately
+collect:
+    sh "${PATH_TO_SCRIPTS:-.}/log_disk_usage.sh"
+
 # Show entry loaded in launchd
 check_loaded:
     launchctl list | grep -i "diskusagelog"

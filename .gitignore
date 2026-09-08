@@ -25,3 +25,6 @@ __marimo__
 # DuckLake
 data/disk_usage.ducklake.files
 data/disk_usage.ducklake
+
+# Raw Data
+data/

@@ -88,3 +88,8 @@ to their own machine and leave every other machine's history intact.
 Install `just` with `brew install just`
 
 - `just -l`
+- `just collect` appends one data point immediately using the same
+  `log_disk_usage.sh` script as launchd, without changing the schedule. It uses
+  `PATH_TO_SCRIPTS` from `.env`, falling back to the repository directory.
+  Run `just load` first to generate the script for your configured data path.
+- `just save` parses and saves the collected data to DuckLake and MotherDuck.
