@@ -251,7 +251,9 @@ def save_to_ducklake(
 
     os.makedirs(catalog_dir, exist_ok=True)
 
-    con: DuckDBPyConnection = connect_and_setup_ducklake(catalog_path)
+    con: DuckDBPyConnection = connect_and_setup_ducklake(
+        catalog_path, automatic_migration=True
+    )
 
     machine_names = df.get_column("machine_name").unique().to_list()
     if len(machine_names) != 1 or not machine_names[0]:

@@ -62,6 +62,15 @@ This order matters: the first upgraded machine is assumed to own all rows that
 predate the `machine_name` column. Later uploads replace only the rows belonging
 to their own machine and leave every other machine's history intact.
 
+### DuckLake catalog upgrades
+
+`just save` automatically migrates an older local DuckLake catalog to the format
+used by the loaded DuckLake extension before writing data, using
+[`AUTOMATIC_MIGRATION`](https://ducklake.select/docs/stable/duckdb/usage/connecting).
+After updating dependencies and extensions with `just update`, the next
+`just save` upgrades the catalog if needed. `just parse` only processes the log
+file; inspection commands and the dashboard do not request catalog migration.
+
 ## Usage
 
 ### Setting up scheduled jobs

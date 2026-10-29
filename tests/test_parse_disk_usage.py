@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import polars as pl
 import pyarrow as pa
 import pytest
+from typer.testing import CliRunner
 
 PROJECT_ROOT: Path = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -239,7 +240,11 @@ def test_save_to_ducklake_registers_dataframe(tmp_path: Path, monkeypatch) -> No
 
     expected_catalog = os.path.abspath(os.path.join(catalog_dir, "disk_usage.ducklake"))
     attach_calls = [call for call in mock_con.execute.call_args_list if call.args]
-    assert any(f"ducklake:{expected_catalog}" in call.args[0] for call in attach_calls)
+    assert any(
+        f"ducklake:{expected_catalog}" in call.args[0]
+        and "AUTOMATIC_MIGRATION true" in call.args[0]
+        for call in attach_calls
+    )
     assert not any("SET NOT NULL" in call.args[0] for call in attach_calls)
     register_call = mock_con.register.call_args
     assert register_call is not None
@@ -292,6 +297,9 @@ def test_save_to_motherduck_with_token(tmp_path: Path, monkeypatch) -> None:
     connect_mock.assert_called_once_with(database="md:")
     mock_con.execute.assert_any_call("CREATE DATABASE IF NOT EXISTS custom_db;")
     mock_con.execute.assert_any_call("USE custom_db;")
+    mock_con.execute.assert_any_call(
+        f"ATTACH 'ducklake:{catalog_file}' AS disk_usage_lake;"
+    )
     sql_calls = [call.args[0] for call in mock_con.execute.call_args_list]
     assert not any("DROP TABLE" in sql for sql in sql_calls)
     assert not any("SET NOT NULL" in sql for sql in sql_calls)
@@ -316,6 +324,50 @@ def test_save_to_motherduck_without_token(monkeypatch) -> None:
     pdu.save_to_motherduck(df, "./data/disk_usage.ducklake")
 
     connect_mock.assert_not_called()
+
+
+@pytest.mark.parametrize("flags", ["-pd", "-pdsm"])
+def test_cli_only_migrates_when_saving(
+    tmp_path: Path,
+    monkeypatch,
+    flags: str,
+) -> None:
+    log_file = tmp_path / "logged_disk_usage.txt"
+    log_file.write_text("2025-09-27T10:05:11-05:00 14.8.3\n1 2 3 4 5 6 7 8 9\n")
+    catalog = tmp_path / "disk_usage.ducklake"
+    catalog.touch()
+    mock_con = Mock()
+    mock_con.execute.return_value = mock_con
+    mock_con.fetchall.return_value = PERSISTED_SCHEMA
+    connect_mock = Mock(return_value=mock_con)
+    monkeypatch.setattr(pdu.duckdb, "connect", connect_mock)
+    monkeypatch.setattr(pdu, "plot_data", Mock())
+    monkeypatch.setattr(pdu, "get_machine_name", lambda: "test-mac")
+    monkeypatch.setattr(pdu, "load_config", lambda: {})
+
+    result = CliRunner().invoke(
+        pdu.app,
+        [
+            flags,
+            "--file",
+            str(log_file),
+            "--db-path",
+            str(catalog),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    if flags == "-pdsm":
+        connect_mock.assert_called_once_with()
+        mock_con.execute.assert_any_call(
+            f"ATTACH IF NOT EXISTS 'ducklake:{catalog}' AS diskusage_lake "
+            "(AUTOMATIC_MIGRATION true);"
+        )
+        mock_con.close.assert_called_once()
+        mock_con.register.assert_called_once()
+    else:
+        connect_mock.assert_not_called()
+        mock_con.register.assert_not_called()
 
 
 def test_plot_data_exports_gnuplot_friendly_file(tmp_path: Path, monkeypatch) -> None:

@@ -44,6 +44,27 @@ def test_connect_and_setup_ducklake_success(tmp_path, monkeypatch) -> None:
     ]
 
 
+def test_connect_and_setup_ducklake_migration_failure(tmp_path, monkeypatch) -> None:
+    catalog_path = tmp_path / "disk_usage.ducklake"
+    catalog_path.touch()
+    mock_con = Mock()
+    mock_con.execute.side_effect = [
+        None,
+        None,
+        RuntimeError("Catalog migration failed"),
+    ]
+    monkeypatch.setattr(mdl.duckdb, "connect", Mock(return_value=mock_con))
+
+    with pytest.raises(
+        RuntimeError,
+        match="Failed to connect or setup DuckLake: Catalog migration failed",
+    ):
+        mdl.connect_and_setup_ducklake(str(catalog_path), automatic_migration=True)
+
+    mock_con.close.assert_called_once()
+    assert call(f"USE {mdl.DUCKLAKE_ALIAS};") not in mock_con.execute.call_args_list
+
+
 def test_ducklake_snapshots_returns_relation(monkeypatch):
     mock_con = Mock()
     expected_relation = Mock()

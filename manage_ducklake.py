@@ -93,16 +93,24 @@ class Ducklake:
         self.close_con()
 
 
-def connect_and_setup_ducklake(catalog_path: str) -> DuckDBPyConnection:
+def connect_and_setup_ducklake(
+    catalog_path: str, *, automatic_migration: bool = False
+) -> DuckDBPyConnection:
     """
-    Connects to DuckDB, loads the DuckLake extension, and attaches the catalog.
+    Connect to DuckDB and attach the catalog.
 
-    Parameters:
-        catalog_file_path: Path to the .ducklake metadata file.
-        read_only: Whether to attach the catalog in read-only mode.
+    Parameters
+    ----------
+    catalog_path : str
+        Path to the .ducklake metadata file.
+    automatic_migration : bool, optional
+        Upgrade older catalogs to the loaded DuckLake extension's format.
+        Enabled by the local save flow; disabled by default.
 
-    Returns:
-        A DuckDB connection object.
+    Returns
+    -------
+    DuckDBPyConnection
+        A connection with the DuckLake catalog selected.
     """
     if not os.path.isfile(catalog_path):
         raise FileNotFoundError(
@@ -119,10 +127,11 @@ def connect_and_setup_ducklake(catalog_path: str) -> DuckDBPyConnection:
     try:
         con.execute("INSTALL ducklake;")
         con.execute("LOAD ducklake;")
-        attach_sql = (
-            f"ATTACH IF NOT EXISTS 'ducklake:{catalog_path}' AS {DUCKLAKE_ALIAS};"
+        migration_option = " (AUTOMATIC_MIGRATION true)" if automatic_migration else ""
+        con.execute(
+            f"ATTACH IF NOT EXISTS 'ducklake:{catalog_path}' "
+            f"AS {DUCKLAKE_ALIAS}{migration_option};"
         )
-        con.execute(attach_sql)
         con.execute(f"USE {DUCKLAKE_ALIAS};")
     except Exception as e:
         con.close()
